@@ -1,0 +1,720 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainView</class>
+ <widget class="QWidget" name="MainView">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1024</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">
+    QWidget#MainView {
+      background: #EDEDED;     
+      font-family: &quot;Noto Sans&quot;, &quot;Malgun Gothic&quot;;
+      font-size: 14px;
+    }
+
+
+    #sideBar {
+      background: transparent; 
+    }
+    #sideBar QToolButton {
+      width: 40px; height: 40px;
+      border: 2px solid #333;
+      border-radius: 10px;
+      background: #FFFFFF;
+      font-weight: 700;
+    }
+    #sideBar QToolButton:hover {
+      background: #F3F3F3;
+    }
+
+     QGroupBox#grpDetail {
+      background: #FFFFFF;
+      border: 3px solid #111;     
+      border-radius: 12px;
+      padding-top: 18px;       
+    }
+    QGroupBox#grpDetail::title {
+      subcontrol-origin: margin;
+      left: 16px; top: 6px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+    }
+
+
+
+
+
+    QToolButton#btnUp, QToolButton#btnDown {
+      min-width: 44px; min-height: 36px;
+      border: 2px solid #8F8F8F;
+      border-radius: 8px;
+      background: #BDBDBD;          
+      color: #111;
+      font-weight: 700;
+    }
+    QToolButton#btnUp:hover, QToolButton#btnDown:hover {
+      background: #CFCFCF;
+    }
+
+    QLabel#lblSeatTiltValue, QLabel#lblSideMirrorValue,
+    QLabel#lblSeatForeAftValue, QLabel#lblBackMirrorValue {
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    QLabel#lblSeatPic, QLabel#lblSideMirrorPic,
+    QLabel#lblSeatForeAftPic, QLabel#lblBackMirrorPic {
+      background: transparent;
+    }
+
+    #headerBar {
+      background: #F7F7F7;
+      border: 1px solid #D0D0D0;
+      border-radius: 10px;
+      padding: 8px 12px;
+    }
+    #lblClock {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+	#lblSettingText{
+	font-size : 40px;
+	font-weight : bold;
+	
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="Q">
+   <property name="spacing">
+    <number>0</number>
+   </property>
+   <property name="sizeConstraint">
+    <enum>QLayout::SetMinAndMaxSize</enum>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout" stretch="0,0">
+     <property name="spacing">
+      <number>16</number>
+     </property>
+     <property name="leftMargin">
+      <number>12</number>
+     </property>
+     <property name="topMargin">
+      <number>12</number>
+     </property>
+     <property name="rightMargin">
+      <number>12</number>
+     </property>
+     <property name="bottomMargin">
+      <number>12</number>
+     </property>
+     <item>
+      <widget class="QWidget" name="sideBar" native="true">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>56</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>64</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <layout class="QVBoxLayout" name="verticalLayout">
+        <item>
+         <widget class="QToolButton" name="btnSave">
+          <property name="text">
+           <string>save</string>
+          </property>
+          <property name="autoRaise">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnMenu">
+          <property name="text">
+           <string>setting</string>
+          </property>
+          <property name="autoRaise">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="verticalSpacer">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>495</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QWidget" name="centerArea" native="true">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <layout class="QVBoxLayout" name="verticalLayout_9">
+        <item>
+         <widget class="QWidget" name="headerBar" native="true">
+          <layout class="QHBoxLayout" name="horizontalLayout_4">
+           <item>
+            <widget class="QLabel" name="lblClock">
+             <property name="text">
+              <string>00:00:00</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QStackedWidget" name="stackedCenter">
+          <widget class="QWidget" name="pageDashboard">
+           <layout class="QVBoxLayout" name="verticalLayout_11">
+            <item>
+             <widget class="QFrame" name="frameDashboard">
+              <property name="frameShape">
+               <enum>QFrame::StyledPanel</enum>
+              </property>
+              <property name="frameShadow">
+               <enum>QFrame::Raised</enum>
+              </property>
+              <layout class="QGridLayout" name="gridLayout">
+               <item row="1" column="1">
+                <widget class="QLabel" name="label_2">
+                 <property name="text">
+                  <string>TextLabel</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="1">
+                <widget class="QLabel" name="label">
+                 <property name="text">
+                  <string>TextLabel</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="label_3">
+                 <property name="text">
+                  <string>TextLabel</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="0">
+                <widget class="QLabel" name="label_4">
+                 <property name="text">
+                  <string>TextLabel</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="pageSettings">
+           <property name="styleSheet">
+            <string notr="true">
+QWidget#pageSettings QGroupBox#grpSettings,
+QWidget#pageSettings QGroupBox#grpDetail {
+  background: #FFFFFF;
+  border: 3px solid #111;
+  border-radius: 12px;
+  padding-top: 18px;
+}
+
+QWidget#pageSettings QGroupBox#grpSettings::title,
+QWidget#pageSettings QGroupBox#grpDetail::title {
+  subcontrol-origin: margin;
+  left: 16px; top: 6px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+QWidget#pageSettings #pnlSettingList {
+  border: 3px solid #6F6F6F;
+  border-radius: 12px;
+  background: #FFFFFF;
+  padding: 8px;
+}
+
+QWidget#pageSettings QPushButton#btnSeatTilt,
+QWidget#pageSettings QPushButton#btnSideMirror,
+QWidget#pageSettings QPushButton#btnSeatForeAft,
+QWidget#pageSettings QPushButton#btnBackMirror {
+  border: 2px solid #BDBDBD;
+  border-radius: 8px;
+  background: #FFFFFF;
+  min-height: 40px;
+  text-align: left;
+  padding-left: 12px;
+}
+QWidget#pageSettings QPushButton:checked {
+  background: #DBE9FF;
+  border: 3px solid #2E5AAC;
+  font-weight: 700;
+}
+
+QWidget#pageSettings QToolButton#btnUp,
+QWidget#pageSettings QToolButton#btnDown {
+  min-width: 44px; min-height: 36px;
+  border: 2px solid #8F8F8F;
+  border-radius: 8px;
+  background: #BDBDBD;
+  color: #111;
+  font-weight: 700;
+}
+</string>
+           </property>
+           <layout class="QVBoxLayout" name="verticalLayout_10">
+            <item>
+             <layout class="QHBoxLayout" name="horizontalLayout_3" stretch="3,5">
+              <item>
+               <widget class="QGroupBox" name="grpSettings">
+                <property name="title">
+                 <string/>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayout_12" stretch="2,5">
+                 <property name="leftMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="bottomMargin">
+                  <number>0</number>
+                 </property>
+                 <item>
+                  <widget class="QLabel" name="lblSettingText">
+                   <property name="text">
+                    <string>설정</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QFrame" name="frmSetting">
+                   <property name="frameShape">
+                    <enum>QFrame::NoFrame</enum>
+                   </property>
+                   <property name="frameShadow">
+                    <enum>QFrame::Raised</enum>
+                   </property>
+                   <layout class="QHBoxLayout" name="horizontalLayout_2" stretch="5,2">
+                    <property name="spacing">
+                     <number>0</number>
+                    </property>
+                    <property name="leftMargin">
+                     <number>2</number>
+                    </property>
+                    <property name="topMargin">
+                     <number>0</number>
+                    </property>
+                    <property name="rightMargin">
+                     <number>0</number>
+                    </property>
+                    <property name="bottomMargin">
+                     <number>2</number>
+                    </property>
+                    <item>
+                     <widget class="QFrame" name="pnlSettingList">
+                      <property name="styleSheet">
+                       <string notr="true">QWidget#pageSettings QWidget#pnlSettingList {
+  border: 3px solid #000;
+  border-radius: 10px;
+  background: #FFFFFF;
+  padding: 8px;
+}
+
+QWidget#pageSettings QWidget#pnlSettingList QPushButton {
+  border: none;
+  background: #FFFFFF;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  min-height: 44px;
+}
+
+QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
+  background: #CFCFCF;
+}
+</string>
+                      </property>
+                      <property name="frameShape">
+                       <enum>QFrame::StyledPanel</enum>
+                      </property>
+                      <property name="frameShadow">
+                       <enum>QFrame::Raised</enum>
+                      </property>
+                      <layout class="QVBoxLayout" name="verticalLayout_13">
+                       <property name="spacing">
+                        <number>0</number>
+                       </property>
+                       <property name="leftMargin">
+                        <number>0</number>
+                       </property>
+                       <property name="topMargin">
+                        <number>0</number>
+                       </property>
+                       <property name="rightMargin">
+                        <number>0</number>
+                       </property>
+                       <property name="bottomMargin">
+                        <number>0</number>
+                       </property>
+                       <item>
+                        <widget class="QPushButton" name="btnSideMirror">
+                         <property name="sizePolicy">
+                          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                           <horstretch>0</horstretch>
+                           <verstretch>0</verstretch>
+                          </sizepolicy>
+                         </property>
+                         <property name="minimumSize">
+                          <size>
+                           <width>0</width>
+                           <height>44</height>
+                          </size>
+                         </property>
+                         <property name="text">
+                          <string>sidemirror</string>
+                         </property>
+                         <property name="checkable">
+                          <bool>true</bool>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="btnSeatTilt">
+                         <property name="sizePolicy">
+                          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                           <horstretch>0</horstretch>
+                           <verstretch>0</verstretch>
+                          </sizepolicy>
+                         </property>
+                         <property name="minimumSize">
+                          <size>
+                           <width>0</width>
+                           <height>44</height>
+                          </size>
+                         </property>
+                         <property name="text">
+                          <string>SeatTilt</string>
+                         </property>
+                         <property name="checkable">
+                          <bool>true</bool>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="btnBackMirror">
+                         <property name="sizePolicy">
+                          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                           <horstretch>0</horstretch>
+                           <verstretch>0</verstretch>
+                          </sizepolicy>
+                         </property>
+                         <property name="minimumSize">
+                          <size>
+                           <width>0</width>
+                           <height>44</height>
+                          </size>
+                         </property>
+                         <property name="text">
+                          <string>roommirror</string>
+                         </property>
+                         <property name="checkable">
+                          <bool>true</bool>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="btnSeatForeAft">
+                         <property name="sizePolicy">
+                          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                           <horstretch>0</horstretch>
+                           <verstretch>0</verstretch>
+                          </sizepolicy>
+                         </property>
+                         <property name="minimumSize">
+                          <size>
+                           <width>0</width>
+                           <height>44</height>
+                          </size>
+                         </property>
+                         <property name="text">
+                          <string>SeatFwd</string>
+                         </property>
+                         <property name="checkable">
+                          <bool>true</bool>
+                         </property>
+                        </widget>
+                       </item>
+                      </layout>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QWidget" name="pnlUpDown" native="true">
+                      <layout class="QVBoxLayout" name="verticalLayout_3">
+                       <item>
+                        <widget class="QToolButton" name="btnUp">
+                         <property name="sizePolicy">
+                          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                           <horstretch>0</horstretch>
+                           <verstretch>0</verstretch>
+                          </sizepolicy>
+                         </property>
+                         <property name="minimumSize">
+                          <size>
+                           <width>48</width>
+                           <height>40</height>
+                          </size>
+                         </property>
+                         <property name="text">
+                          <string>up</string>
+                         </property>
+                         <property name="autoRepeat">
+                          <bool>true</bool>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QToolButton" name="btnDown">
+                         <property name="sizePolicy">
+                          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                           <horstretch>0</horstretch>
+                           <verstretch>0</verstretch>
+                          </sizepolicy>
+                         </property>
+                         <property name="minimumSize">
+                          <size>
+                           <width>48</width>
+                           <height>40</height>
+                          </size>
+                         </property>
+                         <property name="text">
+                          <string>down</string>
+                         </property>
+                         <property name="autoRepeat">
+                          <bool>true</bool>
+                         </property>
+                        </widget>
+                       </item>
+                      </layout>
+                     </widget>
+                    </item>
+                   </layout>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QGroupBox" name="grpDetail">
+                <property name="title">
+                 <string/>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayout_4">
+                 <item>
+                  <widget class="QStackedWidget" name="stkDetail">
+                   <widget class="QWidget" name="pageSeatTilt">
+                    <layout class="QVBoxLayout" name="verticalLayout_6" stretch="1,5,2">
+                     <item>
+                      <widget class="QLabel" name="lblSeatTiltText">
+                       <property name="text">
+                        <string>시트 기울기</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="lblSeatTiltPic">
+                       <property name="text">
+                        <string>seattilepic</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="lblSeatTiltValue">
+                       <property name="text">
+                        <string>TextLabel</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                   <widget class="QWidget" name="pageSideMirror">
+                    <layout class="QVBoxLayout" name="verticalLayout_5" stretch="1,5,2">
+                     <item>
+                      <widget class="QLabel" name="lblSideMirrorText">
+                       <property name="text">
+                        <string>사이드 미러</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="lblSideMirrorPic">
+                       <property name="text">
+                        <string>sidemirrorpic</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="lblSideMirrorValue">
+                       <property name="text">
+                        <string>TextLabel</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                   <widget class="QWidget" name="pageSeatForeAft">
+                    <layout class="QVBoxLayout" name="verticalLayout_7" stretch="1,5,2">
+                     <item>
+                      <widget class="QLabel" name="lblSeatForeAftText">
+                       <property name="text">
+                        <string>시트 앞 뒤</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="lblSeatForeAftPic">
+                       <property name="text">
+                        <string>seatforeaftpic</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="lblSeatForeAftValue">
+                       <property name="text">
+                        <string>TextLabel</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                   <widget class="QWidget" name="pageBackMirror">
+                    <layout class="QVBoxLayout" name="verticalLayout_8" stretch="1,5,2">
+                     <item>
+                      <widget class="QLabel" name="lblBackMirrorText">
+                       <property name="text">
+                        <string>백 미러</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="lblBackMirrorPic">
+                       <property name="text">
+                        <string>backmirrorpic</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="lblBackMirrorValue">
+                       <property name="text">
+                        <string>TextLabel</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

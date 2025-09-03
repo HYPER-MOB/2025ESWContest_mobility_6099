@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AuthWindow</class>
+ <widget class="QWidget" name="AuthWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1024</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">
+QWidget#AuthWindow, QWidget#DataCheckWindow {
+  background: #EDEDED;
+  font-family: &quot;Noto Sans&quot;, &quot;Malgun Gothic&quot;;
+  font-size: 14px;
+}
+
+#panel {
+  background: #FFFFFF;
+  border: 2px solid #1E1E1E;
+  border-radius: 12px;
+  padding: 24px;      
+}
+
+
+#loadingLabel {
+  color: #222;
+  font-weight: 700;
+  qproperty-alignment: 'AlignHCenter | AlignVCenter';
+  margin-bottom: 12px;
+}
+
+QWidget#AuthWindow  #loadingLabel { font-size: 30px; }  /* AuthWindow 크기 */
+QWidget#DataCheckWindow #loadingLabel { font-size: 26px; }  /* DataCheckWindow 크기 */
+
+QProgressBar#progressLine,
+QProgressBar {
+  border: none;
+  background: #E6E6E6;
+  border-radius: 3px;
+  min-height: 12px;
+  max-height: 14px;
+}
+QProgressBar#progressLine::chunk,
+QProgressBar::chunk {
+  background-color: #222222;
+  border-radius: 3px;
+}
+
+#loadingIcon {
+  background: transparent;
+  margin-bottom: 12px;
+}
+</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QFrame" name="panel">
+     <property name="frameShape">
+      <enum>QFrame::StyledPanel</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Raised</enum>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_2" stretch="4,2,2">
+      <item>
+       <widget class="QFrame" name="iconFrame">
+        <property name="frameShape">
+         <enum>QFrame::NoFrame</enum>
+        </property>
+        <property name="frameShadow">
+         <enum>QFrame::Raised</enum>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayout_2">
+         <item>
+          <widget class="QLabel" name="loadingIcon">
+           <property name="minimumSize">
+            <size>
+             <width>160</width>
+             <height>160</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>350</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="pixmap">
+            <pixmap resource="../resources.qrc">:/images/images/AuthFace.png</pixmap>
+           </property>
+           <property name="scaledContents">
+            <bool>true</bool>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignHCenter</set>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="loadingLabel">
+        <property name="styleSheet">
+         <string notr="true"/>
+        </property>
+        <property name="text">
+         <string>얼굴 인식 중입니다..</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QProgressBar" name="progressLine">
+        <property name="minimumSize">
+         <size>
+          <width>800</width>
+          <height>12</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>14</height>
+         </size>
+        </property>
+        <property name="value">
+         <number>0</number>
+        </property>
+        <property name="textVisible">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="../resources.qrc"/>
+ </resources>
+ <connections/>
+</ui>
