@@ -31,6 +31,14 @@ typedef struct Sub {
     struct Sub*     next;
 } Sub;
 
+static char* xstrdup(const char* s){
+    if(!s) return NULL;
+    size_t n = strlen(s) + 1;
+    char* p = (char*)malloc(n);
+    if (p) memcpy(p, s, n);
+    return p;
+}
+
 static int filter_copy(CanFilter* dst, const CanFilter* src) {
     if (!dst || !src) return 0;
     *dst = *src;
@@ -52,6 +60,33 @@ static int filter_copy(CanFilter* dst, const CanFilter* src) {
     return 1;
 }
 
+static inline int filter_match(const CanFilter* f, uint32_t id) {
+    if (!f) return 1; // 필터 없으면 통과
+    switch (f->type) {
+    case CAN_FILTER_RANGE: {
+        uint32_t lo = f->data.range.min;
+        uint32_t hi = f->data.range.max;
+        return (id >= lo && id <= hi);
+    }
+    case CAN_FILTER_MASK: {
+        uint32_t mid  = f->data.mask.id;
+        uint32_t mask = f->data.mask.mask;
+        return ((id & mask) == (mid & mask));
+    }
+    case CAN_FILTER_LIST: {
+        const uint32_t* list = f->data.list.list;
+        uint32_t n = f->data.list.count;
+        if (!list || n == 0) return 0;
+        for (uint32_t i = 0; i < n; ++i) {
+            if (list[i] == id) return 1;
+        }
+        return 0;
+    }
+    default:
+        return 0;
+    }
+}
+
 static void filter_free(CanFilter* f) {
     if (!f) return;
     if (f->type == CAN_FILTER_LIST && f->data.list.list) {
@@ -61,6 +96,15 @@ static void filter_free(CanFilter* f) {
     }
 }
 
+static void on_rx_from_adapter(const CanFrame* f, void* user) {
+    Channel* ch = (Channel*)user;
+    for (Sub* s = ch->subs; s; s = s->next) {
+        if (!filter_match(&s->filter, f->id)) continue;
+        can_callback_t cb = s->cb;
+        void* u = s->user;
+        cb(f, u);
+    }
+}
 
 can_err_t       channel_start(const char* name, CanConfig cfg, Adapter* adapter, Channel** out) {
     if(!name || !out) return CAN_ERR_INVALID;
@@ -68,7 +112,7 @@ can_err_t       channel_start(const char* name, CanConfig cfg, Adapter* adapter,
     Channel* ch = (Channel*)calloc(1, sizeof(Channel));
     if(!ch) return CAN_ERR_MEMORY;
 
-    ch->name = strdup(name);
+    ch->name = xstrdup(name);
     if(!ch->name) {
         free(ch);
         return CAN_ERR_MEMORY;
@@ -82,7 +126,13 @@ can_err_t       channel_start(const char* name, CanConfig cfg, Adapter* adapter,
         free(ch);
         return e;
     }
-
+    if (adapter->v->ch_set_callbacks) {
+        adapter->v->ch_set_callbacks(adapter, ch->h,
+            on_rx_from_adapter, ch,   // on_rx
+            NULL, NULL,                // on_err
+            NULL, NULL                 // on_bus
+        );
+    }
     *out = ch;
     return CAN_OK;
 }

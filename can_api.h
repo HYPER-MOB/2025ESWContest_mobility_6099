@@ -1,10 +1,12 @@
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
 
 typedef enum {
     CAN_DEVICE_NONE = 0,
     CAN_DEVICE_LINUX,
-    CAN_DEVICE_ESP32
+    CAN_DEVICE_ESP32,
+    CAN_DEVICE_DEBUG
 } can_device_t;
 
 typedef enum {
@@ -75,8 +77,8 @@ can_err_t   can_init(can_device_t device);
 void        can_dispose();
 can_err_t   can_open(const char* name, CanConfig cfg);
 can_err_t   can_close(const char* name);
-can_err_t   can_start(const char* name);
-can_err_t   can_stop(const char* name);
+//can_err_t   can_start(const char* name);
+//can_err_t   can_stop(const char* name);
 can_err_t   can_send(const char* name, CanFrame frame, uint32_t timeout_ms);
 can_err_t   can_recv(const char* name, CanFrame* out, uint32_t timeout_ms);
 int         can_register_job(const char* name, CanFrame* frame, uint32_t period_ms);

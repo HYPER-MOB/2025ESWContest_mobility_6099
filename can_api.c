@@ -3,18 +3,12 @@
 #include "adapter.h"
 #include <string.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 typedef struct ChannelNode {
     Channel* ch;
     struct ChannelNode* next;
 } ChannelNode;
-
-static Channel* find_by_name(const char* name) {
-    for(ChannelNode* n = g_state.head; n; n = n->next) {
-       if(strcmp(channel_name(n->ch), name) == 0) return n->ch;
-    }
-    return NULL;
-}
 
 typedef struct {
     bool            initialized;
@@ -23,6 +17,13 @@ typedef struct {
 } can_api_state_t;
 
 static can_api_state_t g_state = { false, CAN_DEVICE_NONE, NULL };
+
+static Channel* find_by_name(const char* name) {
+    for(ChannelNode* n = g_state.head; n; n = n->next) {
+       if(strcmp(channel_name(n->ch), name) == 0) return n->ch;
+    }
+    return NULL;
+}
 
 can_err_t   can_init(can_device_t device) {
     if (g_state.initialized) return CAN_ERR_STATE;
@@ -71,7 +72,7 @@ can_err_t   can_close(const char* name) {
         if (strcmp(channel_name((*pp)->ch), name) == 0) {
             ChannelNode* del = *pp;
             *pp = del->next;
-            channel_destroy(del->ch);
+            channel_stop(del->ch);
             free(del);
             return CAN_OK;
         }
@@ -116,7 +117,7 @@ can_err_t   can_recv(const char* name, CanFrame* out, uint32_t timeout_ms) {
     Channel* ch = find_by_name(name);
     if(!ch) return CAN_ERR_INVALID;
 
-    return channel_write(ch, out, timeout_ms);  
+    return channel_read(ch, out, timeout_ms);  
 }
 
 int         can_register_job(const char* name, CanFrame* frame, uint32_t period_ms) {
