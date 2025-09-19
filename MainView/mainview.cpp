@@ -40,8 +40,8 @@ MainView::MainView(QWidget *parent) :
     ui->setupUi(this);
 
     // 초기 화면
-    ui->stackedCenter->setCurrentWidget(ui->pageDashboard);
-
+    ui->stackedCenter->setCurrentWidget(ui->pageSettings);
+    ui->btnMenu->setText("주행");
     // 설정/대시보드 토글 
     connect(ui->btnMenu, &QToolButton::clicked, this, [this]{
         auto stack = ui->stackedCenter;
@@ -188,9 +188,9 @@ void MainView::fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs)
 
         if (stack == ui->stackedCenter) {
             if (stack->currentWidget() == ui->pageSettings)
-                ui->btnMenu->setText("back");
+                ui->btnMenu->setText("주행");
             else
-                ui->btnMenu->setText("setting");
+                ui->btnMenu->setText("정지");
         }
     });
 

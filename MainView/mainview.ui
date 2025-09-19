@@ -153,7 +153,7 @@
         <item>
          <widget class="QToolButton" name="btnSave">
           <property name="text">
-           <string>save</string>
+           <string>저장</string>
           </property>
           <property name="autoRaise">
            <bool>true</bool>
@@ -163,7 +163,7 @@
         <item>
          <widget class="QToolButton" name="btnMenu">
           <property name="text">
-           <string>setting</string>
+           <string>정지</string>
           </property>
           <property name="autoRaise">
            <bool>true</bool>
