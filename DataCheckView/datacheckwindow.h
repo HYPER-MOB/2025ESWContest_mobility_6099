@@ -1,42 +1,41 @@
 #pragma once
 #include <QWidget>
 #include <QTimer>
+#include <QJsonObject>
+#include "../ipc_client.h"
 
 namespace Ui { class DataCheckWindow; }
 
-class DataCheckWindow : public QWidget
-{
+class DataCheckWindow : public QWidget {
     Q_OBJECT
 public:
     explicit DataCheckWindow(QWidget *parent = nullptr);
     ~DataCheckWindow();
 
-    Q_INVOKABLE void begin(bool hasData);
 
 signals:
     void dataCheckFinished();
 
 private slots:
+    void begin(bool hasData );
     void advance();
+    void onIpcMessage(const IpcMessage& msg);
+    void onWaitTimeout();
 
 private:
-    enum class Phase {
-        None,
-        Checking,        
-        DataFoundMsg,   
-        NoDataMsg,       
-        Measuring,       
-        Calculating,   
-        Applying,        
-        Done
-    };
-
+    enum class Phase { Idle, Checking, DataFoundMsg, NoDataMsg, Measuring, Calculating, Applying, Done };
     void setMessage(const QString& text, bool busy);
-    void setDeterminate(int v); 
+    void setDeterminate(int v);
 
-private:
     Ui::DataCheckWindow *ui;
     QTimer m_timer;
-    Phase  m_phase = Phase::None;
-    bool   m_hasData = false;
+
+    IpcClient* m_ipc = nullptr;
+    QTimer m_waitTimer;
+    QString m_dataReqId;
+    QString m_powerReqId;
+    QJsonObject m_dataPayload;
+
+    bool m_hasData = false;
+    Phase m_phase = Phase::Idle;
 };

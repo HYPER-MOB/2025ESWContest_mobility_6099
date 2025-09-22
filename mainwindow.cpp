@@ -79,7 +79,6 @@ void MainWindow::fadeToWidget(QWidget* next, int durationMs)
     QWidget* cur = ui->stack->currentWidget();
     if (!next || next == cur) return;
 
-    // 효과 준비
     auto *outEff = new QGraphicsOpacityEffect(cur);
     auto *inEff  = new QGraphicsOpacityEffect(next);
     cur->setGraphicsEffect(outEff);
@@ -119,7 +118,6 @@ void MainWindow::fadeToWidget(QWidget* next, int durationMs)
 
 void MainWindow::showIntroSequence()
 {
-    // 라벨 투명도 효과
     auto *eff = new QGraphicsOpacityEffect(m_introLabel);
     eff->setOpacity(0.0);
     m_introLabel->setGraphicsEffect(eff);
@@ -147,7 +145,6 @@ void MainWindow::showIntroSequence()
             }
         });
 
-    // second
     seq->addAnimation(makeFadeIn(500));
     seq->addAnimation(new QPauseAnimation(1000, this));
     seq->addAnimation(makeFadeOut(500));

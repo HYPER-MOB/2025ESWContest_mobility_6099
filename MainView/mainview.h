@@ -8,36 +8,39 @@
 #include <QPropertyAnimation>
 #include <QGraphicsOpacityEffect>
 #include <QStackedWidget>
+#include "../ipc_client.h"   // ★ 추가
 namespace Ui {
 class MainView;
 }
 
-class MainView : public QWidget
-{
+class MainView : public QWidget {
     Q_OBJECT
-
 public:
     explicit MainView(QWidget *parent = nullptr);
     ~MainView();
 
+private slots:
+    void updateClock();
+    void on_pushButton_clicked();
+    void onIpcMessage(const IpcMessage& msg);
+
+private:
+    void fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs);
+    void sendApply(const QJsonObject& changes);
+
 private:
     Ui::MainView *ui;
-    void sendHello();
-    QButtonGroup* m_group;
     QTimer* m_clockTimer = nullptr;
-        void updateClock();
-        bool m_animating = false;
-        void fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs = 180);
 
-private slots:
-    void on_pushButton_clicked();
+    int m_seatTiltDeg   = 0;
+    int m_sideL         = 0;
+    int m_sideR         = 0;
+    int m_foreAft       = 0;
+    int m_backMirrorDeg = 0;
 
-private:
-    int m_seatTiltDeg   = 50;   
-    int m_sideL         = 0;    
-    int m_sideR         = 0;    
-    int m_foreAft       = 0;    
-    int m_backMirrorDeg = 0;  
+    QButtonGroup* m_group = nullptr;
+
+    IpcClient* m_ipc = nullptr;
+    QString m_powerReqId;
 };
-
 #endif // MAINVIEW_H

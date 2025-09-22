@@ -29,6 +29,9 @@ set(PROJECT_SOURCES
     MainView/mainview.h
     MainView/mainview.ui
 
+    ipc_client.cpp
+    ipc_client.h
+
     resources.qrc
 )
 

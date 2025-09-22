@@ -2,57 +2,61 @@
 #include "ui_datacheckwindow.h"
 #include <QDateTime>
 
+static const QString kSock = "/tmp/dcu.demo.sock";
+
 DataCheckWindow::DataCheckWindow(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::DataCheckWindow)
 {
     ui->setupUi(this);
 
-
-    ui->progressLine->setRange(0, 0);      
+    ui->progressLine->setRange(0, 0);
     ui->progressLine->setTextVisible(false);
-    ui->loadingLabel->setText(QString());  
+    ui->loadingLabel->setText(QString());
 
     connect(&m_timer, &QTimer::timeout, this, &DataCheckWindow::advance);
+
+    m_ipc = new IpcClient(kSock, this);
+    connect(m_ipc, &IpcClient::messageReceived, this, &DataCheckWindow::onIpcMessage);
+
+    m_waitTimer.setSingleShot(true);
+    connect(&m_waitTimer, &QTimer::timeout, this, &DataCheckWindow::onWaitTimeout);
 }
 
-DataCheckWindow::~DataCheckWindow()
-{
-    delete ui;
-}
+DataCheckWindow::~DataCheckWindow() { delete ui; }
 
-void DataCheckWindow::begin(bool hasData)
-{
-    m_hasData = hasData;
+void DataCheckWindow::begin(bool /*hasData*/) {
     m_phase   = Phase::Checking;
+    m_hasData = false;
+    m_dataPayload = QJsonObject{};
+    m_dataReqId.clear();
+    m_powerReqId.clear();
 
-    setMessage(QStringLiteral("데이터가 있는지 확인합니다..."), true); // busy
+    setMessage(QStringLiteral("데이터가 있는지 확인합니다..."), true);
     ui->progressLine->setRange(0, 0);
-    m_timer.start(1500); // 1.5초 뒤 다음 단계
+
+    QJsonObject payload{
+        {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
+        {"query", "user-profile"}
+    };
+    m_dataReqId = m_ipc->send("data/result", payload);
+
+    m_waitTimer.start(5000);
 }
 
-void DataCheckWindow::advance()
-{
+void DataCheckWindow::advance() {
     switch (m_phase)
     {
     case Phase::Checking:
-        if (m_hasData) {
-            m_phase = Phase::DataFoundMsg;
-            setMessage(QStringLiteral("데이터가 확인되었습니다."), false);
-            setDeterminate(0);
-            m_timer.start(1000);
-        } else {
-            m_phase = Phase::NoDataMsg;
-            setMessage(QStringLiteral("데이터가 없습니다."), false);
-            setDeterminate(0);
-            m_timer.start(1200);
-        }
         break;
 
     case Phase::DataFoundMsg:
         m_phase = Phase::Applying;
         setMessage(QStringLiteral("적용중입니다..."), true);
-        m_timer.start(1800);
+
+        m_powerReqId = m_ipc->send("power/apply", m_dataPayload);
+
+        m_waitTimer.start(4000);
         break;
 
     case Phase::NoDataMsg:
@@ -70,13 +74,21 @@ void DataCheckWindow::advance()
     case Phase::Calculating:
         m_phase = Phase::Applying;
         setMessage(QStringLiteral("적용중입니다..."), true);
-        m_timer.start(1800);
+
+
+        m_dataPayload = QJsonObject{
+            {"sidemirror", 10},     // 예시
+            {"seatTilt", 30}
+        };
+        m_powerReqId = m_ipc->send("power/apply", m_dataPayload);
+        m_waitTimer.start(4000);
         break;
 
     case Phase::Applying:
-        m_phase = Phase::Done;
-        m_timer.stop();
-        emit dataCheckFinished();
+        break;
+
+    case Phase::Done:
+
         break;
 
     default:
@@ -84,18 +96,87 @@ void DataCheckWindow::advance()
     }
 }
 
-void DataCheckWindow::setMessage(const QString& text, bool busy)
-{
-    ui->loadingLabel->setText(text);
-    if (busy) {
-        ui->progressLine->setRange(0, 0);   
-    } else {
-        ui->progressLine->setRange(0, 100); 
+void DataCheckWindow::onIpcMessage(const IpcMessage& msg) {
+    if (msg.topic == "data/result") {
+        if (!m_dataReqId.isEmpty() && msg.reqId == m_dataReqId) {
+            if (m_waitTimer.isActive()) m_waitTimer.stop();
+
+            int err = msg.payload.value("error").toInt(-1);
+            if (err == 0) {
+                m_hasData = true;
+
+                if (msg.payload.contains("data") && msg.payload.value("data").isObject()) {
+                    m_dataPayload = msg.payload.value("data").toObject();
+                } else {
+                    m_dataPayload = msg.payload;
+                    m_dataPayload.remove("error");
+                }
+
+                m_phase = Phase::DataFoundMsg;
+                setMessage(QStringLiteral("데이터가 확인되었습니다."), false);
+                setDeterminate(0);
+                m_timer.start(1000);
+            } else {
+                m_hasData = false;
+                m_phase = Phase::NoDataMsg;
+                setMessage(QStringLiteral("데이터가 없습니다."), false);
+                setDeterminate(0);
+                m_timer.start(1200);
+            }
+        }
+        return;
+    }
+
+    if (msg.topic == "power/apply/ack") {
+        if (!m_powerReqId.isEmpty() && msg.reqId == m_powerReqId) {
+            if (m_waitTimer.isActive()) m_waitTimer.stop();
+
+            bool ok = msg.payload.value("ok").toBool(false);
+            if (ok) {
+                m_phase = Phase::Done;
+                m_timer.stop();
+                setMessage(QStringLiteral("적용이 완료되었습니다."), false);
+                setDeterminate(100);
+                emit dataCheckFinished();
+            } else {
+                // 실패 시 재시도하거나 경고 표시 (간단히 재시도 예시)
+                setMessage(QStringLiteral("적용 실패. 재시도합니다..."), true);
+                // 즉시 재전송 (백오프 권장)
+                m_powerReqId = m_ipc->send("power/apply", m_dataPayload);
+                m_waitTimer.start(4000);
+            }
+        }
+        return;
     }
 }
 
-void DataCheckWindow::setDeterminate(int v)
-{
+void DataCheckWindow::onWaitTimeout() {
+    if (!m_dataReqId.isEmpty() && m_phase == Phase::Checking) {
+        m_phase = Phase::NoDataMsg;
+        setMessage(QStringLiteral("네트워크 지연으로 데이터 확인 실패. 측정으로 진행합니다."), false);
+        setDeterminate(0);
+        m_timer.start(1200);
+        return;
+    }
+
+    if (!m_powerReqId.isEmpty() && m_phase == Phase::Applying) {
+        setMessage(QStringLiteral("적용 응답 지연. 다시 시도합니다..."), true);
+        m_powerReqId = m_ipc->send("power/apply", m_dataPayload);
+        m_waitTimer.start(4000);
+        return;
+    }
+}
+
+void DataCheckWindow::setMessage(const QString& text, bool busy) {
+    ui->loadingLabel->setText(text);
+    if (busy) {
+        ui->progressLine->setRange(0, 0);
+    } else {
+        ui->progressLine->setRange(0, 100);
+    }
+}
+
+void DataCheckWindow::setDeterminate(int v) {
     if (ui->progressLine->maximum() == 0) {
         ui->progressLine->setRange(0, 100);
     }
