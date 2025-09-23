@@ -224,31 +224,43 @@
                <enum>QFrame::Raised</enum>
               </property>
               <layout class="QGridLayout" name="gridLayout">
-               <item row="1" column="1">
-                <widget class="QLabel" name="label_2">
-                 <property name="text">
-                  <string>TextLabel</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="4" column="1">
-                <widget class="QLabel" name="label">
-                 <property name="text">
-                  <string>TextLabel</string>
-                 </property>
-                </widget>
-               </item>
                <item row="1" column="0">
-                <widget class="QLabel" name="label_3">
-                 <property name="text">
-                  <string>TextLabel</string>
+                <widget class="QFrame" name="frame">
+                 <property name="frameShape">
+                  <enum>QFrame::StyledPanel</enum>
+                 </property>
+                 <property name="frameShadow">
+                  <enum>QFrame::Raised</enum>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QFrame" name="frame_2">
+                 <property name="frameShape">
+                  <enum>QFrame::StyledPanel</enum>
+                 </property>
+                 <property name="frameShadow">
+                  <enum>QFrame::Raised</enum>
                  </property>
                 </widget>
                </item>
                <item row="4" column="0">
-                <widget class="QLabel" name="label_4">
-                 <property name="text">
-                  <string>TextLabel</string>
+                <widget class="QFrame" name="frame_3">
+                 <property name="frameShape">
+                  <enum>QFrame::StyledPanel</enum>
+                 </property>
+                 <property name="frameShadow">
+                  <enum>QFrame::Raised</enum>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="1">
+                <widget class="QFrame" name="frame_4">
+                 <property name="frameShape">
+                  <enum>QFrame::StyledPanel</enum>
+                 </property>
+                 <property name="frameShadow">
+                  <enum>QFrame::Raised</enum>
                  </property>
                 </widget>
                </item>
@@ -558,11 +570,29 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                 <property name="title">
                  <string/>
                 </property>
+                <property name="alignment">
+                 <set>Qt::AlignCenter</set>
+                </property>
                 <layout class="QVBoxLayout" name="verticalLayout_4">
                  <item>
                   <widget class="QStackedWidget" name="stkDetail">
+                   <property name="currentIndex">
+                    <number>1</number>
+                   </property>
                    <widget class="QWidget" name="pageSeatTilt">
-                    <layout class="QVBoxLayout" name="verticalLayout_6" stretch="1,5,2">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                    <property name="layoutDirection">
+                     <enum>Qt::LeftToRight</enum>
+                    </property>
+                    <layout class="QVBoxLayout" name="verticalLayout_6" stretch="1,7,2">
+                     <property name="leftMargin">
+                      <number>9</number>
+                     </property>
                      <item>
                       <widget class="QLabel" name="lblSeatTiltText">
                        <property name="text">
@@ -574,13 +604,43 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                       </widget>
                      </item>
                      <item>
-                      <widget class="QLabel" name="lblSeatTiltPic">
-                       <property name="text">
-                        <string>seattilepic</string>
+                      <widget class="QFrame" name="SeatTiltFrame">
+                       <property name="frameShape">
+                        <enum>QFrame::StyledPanel</enum>
                        </property>
-                       <property name="alignment">
-                        <set>Qt::AlignCenter</set>
+                       <property name="frameShadow">
+                        <enum>QFrame::Raised</enum>
                        </property>
+                       <layout class="QHBoxLayout" name="horizontalLayout_5">
+                        <item>
+                         <widget class="QLabel" name="lblSeatTiltPic">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="maximumSize">
+                           <size>
+                            <width>300</width>
+                            <height>300</height>
+                           </size>
+                          </property>
+                          <property name="text">
+                           <string/>
+                          </property>
+                          <property name="pixmap">
+                           <pixmap resource="../resources.qrc">:/images/images/SeatTilt.png</pixmap>
+                          </property>
+                          <property name="scaledContents">
+                           <bool>true</bool>
+                          </property>
+                          <property name="alignment">
+                           <set>Qt::AlignCenter</set>
+                          </property>
+                         </widget>
+                        </item>
+                       </layout>
                       </widget>
                      </item>
                      <item>
@@ -596,7 +656,7 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                     </layout>
                    </widget>
                    <widget class="QWidget" name="pageSideMirror">
-                    <layout class="QVBoxLayout" name="verticalLayout_5" stretch="1,5,2">
+                    <layout class="QVBoxLayout" name="verticalLayout_5" stretch="1,7,0">
                      <item>
                       <widget class="QLabel" name="lblSideMirrorText">
                        <property name="text">
@@ -608,29 +668,85 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                       </widget>
                      </item>
                      <item>
-                      <widget class="QLabel" name="lblSideMirrorPic">
-                       <property name="text">
-                        <string>sidemirrorpic</string>
+                      <widget class="QFrame" name="SideMirrorFrame">
+                       <property name="frameShape">
+                        <enum>QFrame::StyledPanel</enum>
                        </property>
-                       <property name="alignment">
-                        <set>Qt::AlignCenter</set>
+                       <property name="frameShadow">
+                        <enum>QFrame::Raised</enum>
                        </property>
+                       <layout class="QHBoxLayout" name="horizontalLayout_6">
+                        <item>
+                         <widget class="QLabel" name="lblSideMirrorPic">
+                          <property name="maximumSize">
+                           <size>
+                            <width>300</width>
+                            <height>300</height>
+                           </size>
+                          </property>
+                          <property name="text">
+                           <string/>
+                          </property>
+                          <property name="pixmap">
+                           <pixmap resource="../resources.qrc">:/images/images/SideMirror.png</pixmap>
+                          </property>
+                          <property name="scaledContents">
+                           <bool>true</bool>
+                          </property>
+                          <property name="alignment">
+                           <set>Qt::AlignCenter</set>
+                          </property>
+                         </widget>
+                        </item>
+                       </layout>
                       </widget>
                      </item>
                      <item>
-                      <widget class="QLabel" name="lblSideMirrorValue">
-                       <property name="text">
-                        <string>TextLabel</string>
-                       </property>
-                       <property name="alignment">
-                        <set>Qt::AlignCenter</set>
-                       </property>
+                      <widget class="QWidget" name="lblSideMirrorChange" native="true">
+                       <layout class="QHBoxLayout" name="horizontalLayout_9">
+                        <item>
+                         <widget class="QRadioButton" name="radioLeft">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="text">
+                           <string>LEFT</string>
+                          </property>
+                         </widget>
+                        </item>
+                        <item>
+                         <widget class="QLabel" name="lblSideMirrorValue">
+                          <property name="text">
+                           <string>TextLabel</string>
+                          </property>
+                          <property name="alignment">
+                           <set>Qt::AlignCenter</set>
+                          </property>
+                         </widget>
+                        </item>
+                        <item>
+                         <widget class="QRadioButton" name="radioRight">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="text">
+                           <string>RIGHT</string>
+                          </property>
+                         </widget>
+                        </item>
+                       </layout>
                       </widget>
                      </item>
                     </layout>
                    </widget>
                    <widget class="QWidget" name="pageSeatForeAft">
-                    <layout class="QVBoxLayout" name="verticalLayout_7" stretch="1,5,2">
+                    <layout class="QVBoxLayout" name="verticalLayout_7" stretch="1,7,2">
                      <item>
                       <widget class="QLabel" name="lblSeatForeAftText">
                        <property name="text">
@@ -642,13 +758,37 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                       </widget>
                      </item>
                      <item>
-                      <widget class="QLabel" name="lblSeatForeAftPic">
-                       <property name="text">
-                        <string>seatforeaftpic</string>
+                      <widget class="QFrame" name="SeatFwdFrame">
+                       <property name="frameShape">
+                        <enum>QFrame::StyledPanel</enum>
                        </property>
-                       <property name="alignment">
-                        <set>Qt::AlignCenter</set>
+                       <property name="frameShadow">
+                        <enum>QFrame::Raised</enum>
                        </property>
+                       <layout class="QHBoxLayout" name="horizontalLayout_7">
+                        <item>
+                         <widget class="QLabel" name="lblSeatForeAftPic">
+                          <property name="maximumSize">
+                           <size>
+                            <width>300</width>
+                            <height>300</height>
+                           </size>
+                          </property>
+                          <property name="text">
+                           <string/>
+                          </property>
+                          <property name="pixmap">
+                           <pixmap resource="../resources.qrc">:/images/images/SeatFrontRear.png</pixmap>
+                          </property>
+                          <property name="scaledContents">
+                           <bool>true</bool>
+                          </property>
+                          <property name="alignment">
+                           <set>Qt::AlignCenter</set>
+                          </property>
+                         </widget>
+                        </item>
+                       </layout>
                       </widget>
                      </item>
                      <item>
@@ -664,7 +804,7 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                     </layout>
                    </widget>
                    <widget class="QWidget" name="pageBackMirror">
-                    <layout class="QVBoxLayout" name="verticalLayout_8" stretch="1,5,2">
+                    <layout class="QVBoxLayout" name="verticalLayout_8" stretch="1,7,2">
                      <item>
                       <widget class="QLabel" name="lblBackMirrorText">
                        <property name="text">
@@ -676,13 +816,37 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                       </widget>
                      </item>
                      <item>
-                      <widget class="QLabel" name="lblBackMirrorPic">
-                       <property name="text">
-                        <string>backmirrorpic</string>
+                      <widget class="QFrame" name="BackMirrorFrame">
+                       <property name="frameShape">
+                        <enum>QFrame::StyledPanel</enum>
                        </property>
-                       <property name="alignment">
-                        <set>Qt::AlignCenter</set>
+                       <property name="frameShadow">
+                        <enum>QFrame::Raised</enum>
                        </property>
+                       <layout class="QHBoxLayout" name="horizontalLayout_8">
+                        <item>
+                         <widget class="QLabel" name="lblBackMirrorPic">
+                          <property name="maximumSize">
+                           <size>
+                            <width>300</width>
+                            <height>300</height>
+                           </size>
+                          </property>
+                          <property name="text">
+                           <string/>
+                          </property>
+                          <property name="pixmap">
+                           <pixmap resource="../resources.qrc">:/images/images/RoomMirror.png</pixmap>
+                          </property>
+                          <property name="scaledContents">
+                           <bool>true</bool>
+                          </property>
+                          <property name="alignment">
+                           <set>Qt::AlignCenter</set>
+                          </property>
+                         </widget>
+                        </item>
+                       </layout>
                       </widget>
                      </item>
                      <item>
@@ -715,6 +879,8 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
    </item>
   </layout>
  </widget>
- <resources/>
+ <resources>
+  <include location="../resources.qrc"/>
+ </resources>
  <connections/>
 </ui>

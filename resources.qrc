@@ -1,5 +1,10 @@
 <RCC>
     <qresource prefix="/images">
         <file>images/AuthFace.png</file>
+        <file>images/DataCheck.png</file>
+        <file>images/SeatFrontRear.png</file>
+        <file>images/RoomMirror.png</file>
+        <file>images/SeatTilt.png</file>
+        <file>images/SideMirror.png</file>
     </qresource>
 </RCC>

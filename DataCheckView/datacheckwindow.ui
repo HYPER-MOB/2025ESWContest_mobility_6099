@@ -101,7 +101,7 @@ QProgressBar::chunk {
             <string/>
            </property>
            <property name="pixmap">
-            <pixmap resource="../resources.qrc">:/images/images/AuthFace.png</pixmap>
+            <pixmap resource="../resources.qrc">:/images/images/DataCheck.png</pixmap>
            </property>
            <property name="scaledContents">
             <bool>true</bool>

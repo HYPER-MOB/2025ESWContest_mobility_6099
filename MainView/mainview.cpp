@@ -15,6 +15,7 @@
 #include <QEasingCurve>
 #include <QJsonObject>
 #include <QDebug>
+#include <QLocalSocket>
 #include <algorithm>
 
 #include "../ipc_client.h"
@@ -43,11 +44,13 @@ MainView::MainView(QWidget *parent) :
 {
     ui->setupUi(this);
 
+    // IPC
     m_ipc = new IpcClient(kSock, this);
     connect(m_ipc, &IpcClient::messageReceived, this, &MainView::onIpcMessage);
 
+    // 중앙 스택: 기본은 설정 페이지
     ui->stackedCenter->setCurrentWidget(ui->pageSettings);
-    ui->btnMenu->setText("주행");
+    ui->btnMenu->setText(QStringLiteral("주행"));
     connect(ui->btnMenu, &QToolButton::clicked, this, [this]{
         auto stack = ui->stackedCenter;
         const bool isSettings = (stack->currentWidget() == ui->pageSettings);
@@ -57,6 +60,7 @@ MainView::MainView(QWidget *parent) :
         fadeToPage(stack, nextIndex, 320);
     });
 
+    // 상단 탭 버튼 그룹
     m_group = new QButtonGroup(this);
     m_group->setExclusive(true);
     m_group->addButton(ui->btnSeatTilt);
@@ -64,13 +68,25 @@ MainView::MainView(QWidget *parent) :
     m_group->addButton(ui->btnSeatForeAft);
     m_group->addButton(ui->btnBackMirror);
 
+    // 기본 탭 및 상세 스택
     ui->btnSeatTilt->setChecked(true);
     ui->stkDetail->setCurrentIndex(0);
 
     connect(ui->btnSeatTilt,    &QPushButton::clicked, this, [this]{ fadeToPage(ui->stkDetail, 0, 240); });
-    connect(ui->btnSideMirror,  &QPushButton::clicked, this, [this]{ fadeToPage(ui->stkDetail, 1, 240); });
+    connect(ui->btnSideMirror,  &QPushButton::clicked, this, [this]{
+        fadeToPage(ui->stkDetail, 1, 240);
+        // 사이드미러 페이지 진입 시 기본 Left 선택(라디오가 둘 다 해제된 경우)
+        if (!ui->radioLeft->isChecked() && !ui->radioRight->isChecked())
+            ui->radioLeft->setChecked(true);
+        updateSideMirrorLabel();
+    });
     connect(ui->btnSeatForeAft, &QPushButton::clicked, this, [this]{ fadeToPage(ui->stkDetail, 2, 240); });
     connect(ui->btnBackMirror,  &QPushButton::clicked, this, [this]{ fadeToPage(ui->stkDetail, 3, 240); });
+
+    // 사이드미러 라디오 기본값 및 토글 시 표시 갱신
+    ui->radioLeft->setChecked(true);
+    connect(ui->radioLeft,  &QRadioButton::toggled, this, [this](bool){ updateSideMirrorLabel(); });
+    connect(ui->radioRight, &QRadioButton::toggled, this, [this](bool){ updateSideMirrorLabel(); });
 
     // Up 버튼
     connect(ui->btnUp, &QToolButton::clicked, this, [this]{
@@ -81,10 +97,18 @@ MainView::MainView(QWidget *parent) :
             sendApply(QJsonObject{{"seatTilt", m_seatTiltDeg}});
             break;
         case 1: // 사이드 미러
-            m_sideL = std::min(SIDE_MAX, m_sideL + 1);
-            ui->lblSideMirrorValue->setText(QString("L: %1 / R: %2").arg(m_sideL).arg(m_sideR));
-            sendApply(QJsonObject{{"sideL", m_sideL}});
+        {
+            const bool left = ui->radioLeft->isChecked();
+            if (left) {
+                m_sideL = std::min(SIDE_MAX, m_sideL + 1);
+                sendApply(QJsonObject{{"sideL", m_sideL}});
+            } else {
+                m_sideR = std::min(SIDE_MAX, m_sideR + 1);
+                sendApply(QJsonObject{{"sideR", m_sideR}});
+            }
+            updateSideMirrorLabel();
             break;
+        }
         case 2: // 시트 앞뒤
             m_foreAft = std::min(FOREAFT_MAX, m_foreAft + FOREAFT_STEP);
             ui->lblSeatForeAftValue->setText(QString("%1 mm").arg(m_foreAft));
@@ -107,10 +131,18 @@ MainView::MainView(QWidget *parent) :
             sendApply(QJsonObject{{"seatTilt", m_seatTiltDeg}});
             break;
         case 1: // 사이드 미러
-            m_sideL = std::max(SIDE_MIN, m_sideL - 1);
-            ui->lblSideMirrorValue->setText(QString("L: %1 / R: %2").arg(m_sideL).arg(m_sideR));
-            sendApply(QJsonObject{{"sideL", m_sideL}});
+        {
+            const bool left = ui->radioLeft->isChecked();
+            if (left) {
+                m_sideL = std::max(SIDE_MIN, m_sideL - 1);
+                sendApply(QJsonObject{{"sideL", m_sideL}});
+            } else {
+                m_sideR = std::max(SIDE_MIN, m_sideR - 1);
+                sendApply(QJsonObject{{"sideR", m_sideR}});
+            }
+            updateSideMirrorLabel();
             break;
+        }
         case 2: // 시트 앞뒤
             m_foreAft = std::max(FOREAFT_MIN, m_foreAft - FOREAFT_STEP);
             ui->lblSeatForeAftValue->setText(QString("%1 mm").arg(m_foreAft));
@@ -130,6 +162,12 @@ MainView::MainView(QWidget *parent) :
     m_clockTimer->setInterval(1000);
     connect(m_clockTimer, &QTimer::timeout, this, &MainView::updateClock);
     m_clockTimer->start();
+
+    // 초기 표시 동기화
+    updateSideMirrorLabel();
+    ui->lblSeatTiltValue->setText(QString::number(m_seatTiltDeg) + u8"°");
+    ui->lblSeatForeAftValue->setText(QString("%1 mm").arg(m_foreAft));
+    ui->lblBackMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
 }
 
 MainView::~MainView()
@@ -141,7 +179,7 @@ void MainView::on_pushButton_clicked()
 {
     // (기존 테스트용) 필요 없으면 삭제 가능
     QLocalSocket sock;
-    sock.connectToServer("/tmp/dcu.demo.sock");
+    sock.connectToServer(kSock);
     if (!sock.waitForConnected(1000)) {
         qDebug() << "connect failed:" << sock.errorString();
         return;
@@ -197,9 +235,9 @@ void MainView::fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs)
 
         if (stack == ui->stackedCenter) {
             if (stack->currentWidget() == ui->pageSettings)
-                ui->btnMenu->setText("주행");
+                ui->btnMenu->setText(QStringLiteral("주행"));
             else
-                ui->btnMenu->setText("정지");
+                ui->btnMenu->setText(QStringLiteral("정지"));
         }
     });
 
@@ -216,6 +254,11 @@ void MainView::fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs)
     seq->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
+void MainView::updateSideMirrorLabel()
+{
+    ui->lblSideMirrorValue->setText(
+        QString("L: %1 / R: %2").arg(m_sideL).arg(m_sideR));
+}
 
 void MainView::sendApply(const QJsonObject& changes)
 {

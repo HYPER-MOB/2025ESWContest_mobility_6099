@@ -8,7 +8,9 @@
 #include <QPropertyAnimation>
 #include <QGraphicsOpacityEffect>
 #include <QStackedWidget>
-#include "../ipc_client.h"   // ★ 추가
+#include <QJsonObject>
+#include "../ipc_client.h"
+
 namespace Ui {
 class MainView;
 }
@@ -27,6 +29,7 @@ private slots:
 private:
     void fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs);
     void sendApply(const QJsonObject& changes);
+    void updateSideMirrorLabel();
 
 private:
     Ui::MainView *ui;
@@ -43,4 +46,5 @@ private:
     IpcClient* m_ipc = nullptr;
     QString m_powerReqId;
 };
+
 #endif // MAINVIEW_H
