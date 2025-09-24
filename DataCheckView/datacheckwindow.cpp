@@ -77,9 +77,13 @@ void DataCheckWindow::advance() {
 
 
         m_dataPayload = QJsonObject{
-            {"sidemirror", 10},     // 예시
-            {"seatTilt", 30}
+            {"sideL",    10},
+            {"sideR",    0},
+            {"seatTilt", 30},
+            {"foreAft",  20},
+            {"backMirror", 5}
         };
+        emit profileResolved(m_dataPayload);
         m_powerReqId = m_ipc->send("power/apply", m_dataPayload);
         m_waitTimer.start(4000);
         break;
@@ -111,6 +115,7 @@ void DataCheckWindow::onIpcMessage(const IpcMessage& msg) {
                     m_dataPayload = msg.payload;
                     m_dataPayload.remove("error");
                 }
+                emit profileResolved(m_dataPayload);
 
                 m_phase = Phase::DataFoundMsg;
                 setMessage(QStringLiteral("데이터가 확인되었습니다."), false);
@@ -139,9 +144,7 @@ void DataCheckWindow::onIpcMessage(const IpcMessage& msg) {
                 setDeterminate(100);
                 emit dataCheckFinished();
             } else {
-                // 실패 시 재시도하거나 경고 표시 (간단히 재시도 예시)
                 setMessage(QStringLiteral("적용 실패. 재시도합니다..."), true);
-                // 즉시 재전송 (백오프 권장)
                 m_powerReqId = m_ipc->send("power/apply", m_dataPayload);
                 m_waitTimer.start(4000);
             }

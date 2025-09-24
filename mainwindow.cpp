@@ -30,20 +30,21 @@ MainWindow::MainWindow(QWidget *parent)
     // 프레임/타이틀바 제거
     setWindowFlags(Qt::FramelessWindowHint | Qt::Window);
 
-
+    // 인트로 페이지
     m_introPage = new QWidget(this);
     m_introPage->setObjectName("pageIntro");
     m_introPage->setStyleSheet("QWidget#pageIntro { background: #FFFFFF; }");
     ui->stack->insertWidget(0, m_introPage);
     ui->stack->setCurrentWidget(m_introPage);
 
-    // 중앙 텍스트 라벨
+    // 인트로 라벨
     m_introLabel = new QLabel(m_introPage);
     m_introLabel->setObjectName("introLabel");
     m_introLabel->setAlignment(Qt::AlignCenter);
     m_introLabel->setStyleSheet("color:#000000; font-size:42px; font-weight:800;");
     m_introLabel->setGeometry(0, 0, 1024, 600);
 
+    // 페이지들 생성
     m_auth = new AuthWindow(this);
     m_data = new DataCheckWindow(this);
     m_main = new MainView(this);
@@ -52,12 +53,16 @@ MainWindow::MainWindow(QWidget *parent)
     ui->stack->insertWidget(2, m_data);
     ui->stack->insertWidget(3, m_main);
 
+    // ✅ DataCheck에서 프로필이 확정되면 MainView 초기화
+    connect(m_data, &DataCheckWindow::profileResolved,
+            m_main, &MainView::loadInitialProfile);
+
     // 인트로 애니메이션 시작
     showIntroSequence();
 
     // Auth → DataCheck
     connect(m_auth, &AuthWindow::authFinished, this, [this]{
-        bool hasData = false; // later
+        bool hasData = false; // 필요하면 실제 값으로 세팅
         fadeToWidget(m_data);
         QMetaObject::invokeMethod(m_data, "begin", Qt::QueuedConnection,
                                   Q_ARG(bool, hasData));
@@ -131,12 +136,10 @@ void MainWindow::showIntroSequence()
                                     a->setDuration(ms); a->setStartValue(1.0); a->setEndValue(0.0);
                                     a->setEasingCurve(QEasingCurve::InOutQuad); return a; };
 
- 
     m_introLabel->setText(u8"반갑습니다");
     seq->addAnimation(makeFadeIn(500));
     seq->addAnimation(new QPauseAnimation(1000, this));
     seq->addAnimation(makeFadeOut(500));
-
 
     connect(seq, &QSequentialAnimationGroup::currentAnimationChanged, this,
         [=](QAbstractAnimation*){

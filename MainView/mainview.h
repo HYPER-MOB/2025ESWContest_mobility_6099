@@ -21,7 +21,9 @@ public:
     explicit MainView(QWidget *parent = nullptr);
     ~MainView();
 
-private slots:
+
+public slots:
+    void loadInitialProfile(const QJsonObject& profile);
     void updateClock();
     void on_pushButton_clicked();
     void onIpcMessage(const IpcMessage& msg);
@@ -34,7 +36,7 @@ private:
 private:
     Ui::MainView *ui;
     QTimer* m_clockTimer = nullptr;
-
+    bool m_initializing = false;
     int m_seatTiltDeg   = 0;
     int m_sideL         = 0;
     int m_sideR         = 0;

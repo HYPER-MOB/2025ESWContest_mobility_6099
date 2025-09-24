@@ -15,12 +15,10 @@
 #include <QEasingCurve>
 #include <QJsonObject>
 #include <QDebug>
-#include <QLocalSocket>
 #include <algorithm>
 
 #include "../ipc_client.h"
 
-// 값 범위 상수 정의
 namespace {
     const int SEAT_TILT_MIN = 0;
     const int SEAT_TILT_MAX = 90;
@@ -44,13 +42,11 @@ MainView::MainView(QWidget *parent) :
 {
     ui->setupUi(this);
 
-    // IPC
     m_ipc = new IpcClient(kSock, this);
     connect(m_ipc, &IpcClient::messageReceived, this, &MainView::onIpcMessage);
 
-    // 중앙 스택: 기본은 설정 페이지
     ui->stackedCenter->setCurrentWidget(ui->pageSettings);
-    ui->btnMenu->setText(QStringLiteral("주행"));
+    ui->btnMenu->setText("주행");
     connect(ui->btnMenu, &QToolButton::clicked, this, [this]{
         auto stack = ui->stackedCenter;
         const bool isSettings = (stack->currentWidget() == ui->pageSettings);
@@ -60,7 +56,6 @@ MainView::MainView(QWidget *parent) :
         fadeToPage(stack, nextIndex, 320);
     });
 
-    // 상단 탭 버튼 그룹
     m_group = new QButtonGroup(this);
     m_group->setExclusive(true);
     m_group->addButton(ui->btnSeatTilt);
@@ -68,22 +63,18 @@ MainView::MainView(QWidget *parent) :
     m_group->addButton(ui->btnSeatForeAft);
     m_group->addButton(ui->btnBackMirror);
 
-    // 기본 탭 및 상세 스택
     ui->btnSeatTilt->setChecked(true);
     ui->stkDetail->setCurrentIndex(0);
 
     connect(ui->btnSeatTilt,    &QPushButton::clicked, this, [this]{ fadeToPage(ui->stkDetail, 0, 240); });
     connect(ui->btnSideMirror,  &QPushButton::clicked, this, [this]{
         fadeToPage(ui->stkDetail, 1, 240);
-        // 사이드미러 페이지 진입 시 기본 Left 선택(라디오가 둘 다 해제된 경우)
         if (!ui->radioLeft->isChecked() && !ui->radioRight->isChecked())
             ui->radioLeft->setChecked(true);
         updateSideMirrorLabel();
     });
     connect(ui->btnSeatForeAft, &QPushButton::clicked, this, [this]{ fadeToPage(ui->stkDetail, 2, 240); });
     connect(ui->btnBackMirror,  &QPushButton::clicked, this, [this]{ fadeToPage(ui->stkDetail, 3, 240); });
-
-    // 사이드미러 라디오 기본값 및 토글 시 표시 갱신
     ui->radioLeft->setChecked(true);
     connect(ui->radioLeft,  &QRadioButton::toggled, this, [this](bool){ updateSideMirrorLabel(); });
     connect(ui->radioRight, &QRadioButton::toggled, this, [this](bool){ updateSideMirrorLabel(); });
@@ -164,10 +155,10 @@ MainView::MainView(QWidget *parent) :
     m_clockTimer->start();
 
     // 초기 표시 동기화
-    updateSideMirrorLabel();
-    ui->lblSeatTiltValue->setText(QString::number(m_seatTiltDeg) + u8"°");
-    ui->lblSeatForeAftValue->setText(QString("%1 mm").arg(m_foreAft));
-    ui->lblBackMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
+     updateSideMirrorLabel();
+     ui->lblSeatTiltValue->setText(QString::number(m_seatTiltDeg) + u8"°");
+     ui->lblSeatForeAftValue->setText(QString("%1 mm").arg(m_foreAft));
+     ui->lblBackMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
 }
 
 MainView::~MainView()
@@ -175,11 +166,46 @@ MainView::~MainView()
     delete ui;
 }
 
+void MainView::loadInitialProfile(const QJsonObject& profile)
+{
+    m_initializing = true;
+
+    auto getInt = [&](const char* key, int defVal) {
+        return profile.contains(key) ? profile.value(key).toInt(defVal) : defVal;
+    };
+
+    int seatTilt   = getInt("seatTilt",   m_seatTiltDeg);
+    int sideL      = getInt("sideL",      m_sideL);
+    int sideR      = getInt("sideR",      m_sideR);
+    int foreAft    = getInt("foreAft",    m_foreAft);
+    int backMirror = getInt("backMirror", m_backMirrorDeg);
+
+    seatTilt   = std::clamp(seatTilt,   SEAT_TILT_MIN, SEAT_TILT_MAX);
+    sideL      = std::clamp(sideL,      SIDE_MIN,      SIDE_MAX);
+    sideR      = std::clamp(sideR,      SIDE_MIN,      SIDE_MAX);
+    foreAft    = std::clamp(foreAft,    FOREAFT_MIN,   FOREAFT_MAX);
+    backMirror = std::clamp(backMirror, BACKMIRROR_MIN,BACKMIRROR_MAX);
+
+    m_seatTiltDeg   = seatTilt;
+    m_sideL         = sideL;
+    m_sideR         = sideR;
+    m_foreAft       = foreAft;
+    m_backMirrorDeg = backMirror;
+
+    ui->lblSeatTiltValue->setText(QString::number(m_seatTiltDeg) + u8"°");
+    ui->lblSideMirrorValue->setText(QString("L: %1 / R: %2").arg(m_sideL).arg(m_sideR));
+    ui->lblSeatForeAftValue->setText(QString("%1 mm").arg(m_foreAft));
+    ui->lblBackMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
+
+    m_initializing = false;
+}
+
+
 void MainView::on_pushButton_clicked()
 {
     // (기존 테스트용) 필요 없으면 삭제 가능
     QLocalSocket sock;
-    sock.connectToServer(kSock);
+    sock.connectToServer("/tmp/dcu.demo.sock");
     if (!sock.waitForConnected(1000)) {
         qDebug() << "connect failed:" << sock.errorString();
         return;
@@ -228,20 +254,18 @@ void MainView::fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs)
     auto* seq = new QSequentialAnimationGroup(this);
     stack->setEnabled(false);
 
-    // 전환 타이밍: fadeOut 끝나는 시점에 인덱스 교체
     connect(fadeOut, &QPropertyAnimation::finished, this, [this, stack, next](){
         stack->setCurrentWidget(next);
         next->update();
 
         if (stack == ui->stackedCenter) {
             if (stack->currentWidget() == ui->pageSettings)
-                ui->btnMenu->setText(QStringLiteral("주행"));
+                ui->btnMenu->setText("주행");
             else
-                ui->btnMenu->setText(QStringLiteral("정지"));
+                ui->btnMenu->setText("정지");
         }
     });
 
-    // 종료 정리
     connect(seq, &QSequentialAnimationGroup::finished, this, [=](){
         if (cur->graphicsEffect())  cur->setGraphicsEffect(nullptr);
         if (next->graphicsEffect()) next->setGraphicsEffect(nullptr);
@@ -260,8 +284,10 @@ void MainView::updateSideMirrorLabel()
         QString("L: %1 / R: %2").arg(m_sideL).arg(m_sideR));
 }
 
+
 void MainView::sendApply(const QJsonObject& changes)
 {
+    if (m_initializing) return;
     QJsonObject payload = changes;
     payload.insert("ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
     m_powerReqId = m_ipc->send("power/apply", payload);

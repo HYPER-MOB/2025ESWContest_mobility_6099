@@ -15,12 +15,14 @@ public:
 
 signals:
     void dataCheckFinished();
+    void profileResolved(const QJsonObject& profile);
 
 private slots:
     void begin(bool hasData );
     void advance();
     void onIpcMessage(const IpcMessage& msg);
     void onWaitTimeout();
+
 
 private:
     enum class Phase { Idle, Checking, DataFoundMsg, NoDataMsg, Measuring, Calculating, Applying, Done };
