@@ -15,6 +15,7 @@
 #include <QEasingCurve>
 #include <QJsonObject>
 #include <QDebug>
+#include <QLocalSocket>   // on_pushButton_clicked에서 사용
 #include <algorithm>
 
 #include "../ipc_client.h"
@@ -86,6 +87,7 @@ MainView::MainView(QWidget *parent) :
             m_seatTiltDeg = std::min(SEAT_TILT_MAX, m_seatTiltDeg + 1);
             ui->lblSeatTiltValue->setText(QString::number(m_seatTiltDeg) + u8"°");
             sendApply(QJsonObject{{"seatTilt", m_seatTiltDeg}});
+            syncDashboard();
             break;
         case 1: // 사이드 미러
         {
@@ -97,18 +99,21 @@ MainView::MainView(QWidget *parent) :
                 m_sideR = std::min(SIDE_MAX, m_sideR + 1);
                 sendApply(QJsonObject{{"sideR", m_sideR}});
             }
-            updateSideMirrorLabel();
+            updateSideMirrorLabel(); // 내부에서 대시보드도 동기화
+            syncDashboard();         // (중복 안전용)
             break;
         }
         case 2: // 시트 앞뒤
             m_foreAft = std::min(FOREAFT_MAX, m_foreAft + FOREAFT_STEP);
             ui->lblSeatForeAftValue->setText(QString("%1 mm").arg(m_foreAft));
             sendApply(QJsonObject{{"foreAft", m_foreAft}});
+            syncDashboard();
             break;
         case 3: // 백 미러
             m_backMirrorDeg = std::min(BACKMIRROR_MAX, m_backMirrorDeg + 1);
             ui->lblBackMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
             sendApply(QJsonObject{{"backMirror", m_backMirrorDeg}});
+            syncDashboard();
             break;
         }
     });
@@ -120,6 +125,7 @@ MainView::MainView(QWidget *parent) :
             m_seatTiltDeg = std::max(SEAT_TILT_MIN, m_seatTiltDeg - 1);
             ui->lblSeatTiltValue->setText(QString::number(m_seatTiltDeg) + u8"°");
             sendApply(QJsonObject{{"seatTilt", m_seatTiltDeg}});
+            syncDashboard();
             break;
         case 1: // 사이드 미러
         {
@@ -132,17 +138,20 @@ MainView::MainView(QWidget *parent) :
                 sendApply(QJsonObject{{"sideR", m_sideR}});
             }
             updateSideMirrorLabel();
+            syncDashboard();
             break;
         }
         case 2: // 시트 앞뒤
             m_foreAft = std::max(FOREAFT_MIN, m_foreAft - FOREAFT_STEP);
             ui->lblSeatForeAftValue->setText(QString("%1 mm").arg(m_foreAft));
             sendApply(QJsonObject{{"foreAft", m_foreAft}});
+            syncDashboard();
             break;
         case 3: // 백 미러
             m_backMirrorDeg = std::max(BACKMIRROR_MIN, m_backMirrorDeg - 1);
             ui->lblBackMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
             sendApply(QJsonObject{{"backMirror", m_backMirrorDeg}});
+            syncDashboard();
             break;
         }
     });
@@ -155,10 +164,13 @@ MainView::MainView(QWidget *parent) :
     m_clockTimer->start();
 
     // 초기 표시 동기화
-     updateSideMirrorLabel();
-     ui->lblSeatTiltValue->setText(QString::number(m_seatTiltDeg) + u8"°");
-     ui->lblSeatForeAftValue->setText(QString("%1 mm").arg(m_foreAft));
-     ui->lblBackMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
+    updateSideMirrorLabel();
+    ui->lblSeatTiltValue->setText(QString::number(m_seatTiltDeg) + u8"°");
+    ui->lblSeatForeAftValue->setText(QString("%1 mm").arg(m_foreAft));
+    ui->lblBackMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
+
+    // 대시보드도 초기값 반영
+    syncDashboard();
 }
 
 MainView::~MainView()
@@ -198,8 +210,10 @@ void MainView::loadInitialProfile(const QJsonObject& profile)
     ui->lblBackMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
 
     m_initializing = false;
-}
 
+    // 프로필 로드 후 대시보드 반영
+    syncDashboard();
+}
 
 void MainView::on_pushButton_clicked()
 {
@@ -264,6 +278,11 @@ void MainView::fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs)
             else
                 ui->btnMenu->setText("정지");
         }
+
+        // 대시보드가 보이게 된 시점에 값 동기화
+        if (next == ui->pageDashboard) {
+            syncDashboard();
+        }
     });
 
     connect(seq, &QSequentialAnimationGroup::finished, this, [=](){
@@ -280,10 +299,29 @@ void MainView::fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs)
 
 void MainView::updateSideMirrorLabel()
 {
-    ui->lblSideMirrorValue->setText(
-        QString("L: %1 / R: %2").arg(m_sideL).arg(m_sideR));
+    const QString text = QString("L: %1 / R: %2").arg(m_sideL).arg(m_sideR);
+    ui->lblSideMirrorValue->setText(text);
+
+    // 대시보드 L/R도 동기화
+    if (ui->dashSideMirrorValue)
+        ui->dashSideMirrorValue->setText(text);
 }
 
+void MainView::syncDashboard()
+{
+    // 대시보드 4개 라벨과 멤버 변수 동기화
+    if (ui->dashRoomMirrorValue)
+        ui->dashRoomMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
+
+    if (ui->dashSeatTiltValue)
+        ui->dashSeatTiltValue->setText(QString::number(m_seatTiltDeg) + u8"°");
+
+    if (ui->dashSideMirrorValue)
+        ui->dashSideMirrorValue->setText(QString("L: %1 / R: %2").arg(m_sideL).arg(m_sideR));
+
+    if (ui->dashSeatFwdValue)
+        ui->dashSeatFwdValue->setText(QString("%1 mm").arg(m_foreAft));
+}
 
 void MainView::sendApply(const QJsonObject& changes)
 {

@@ -32,6 +32,7 @@ private:
     void fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs);
     void sendApply(const QJsonObject& changes);
     void updateSideMirrorLabel();
+    void syncDashboard();
 
 private:
     Ui::MainView *ui;
