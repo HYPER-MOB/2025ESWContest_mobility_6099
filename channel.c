@@ -15,14 +15,6 @@ struct Channel {
     int         next_sub_id;
 };
 
-typedef struct Job {
-    int          id;
-    CanFrame*    frame_ref;
-    uint32_t     period_ms;
-    uint64_t     next_due_ms;
-    struct Job*  next;
-} Job;
-
 typedef struct Sub {
     int             id;
     CanFilter       filter;
@@ -170,38 +162,56 @@ can_err_t       channel_read(Channel* ch, CanFrame* out, uint32_t timeout_ms) {
     return ch->adapter->v->read(ch->adapter, ch->h, out, timeout_ms);
 }
 
-int             channel_register_job(Channel* ch, CanFrame* frame, uint32_t period_ms) {
-    if (!ch || !frame || period_ms == 0) return -1;
-
-    Job* j = (Job*)calloc(1, sizeof(Job));
-    if (!j) return -1;
-
-    j->id        = ++ch->next_job_id;
-    j->frame_ref = frame; 
-    j->period_ms = period_ms;
-    j->next_due_ms = 0; 
-
-    j->next = ch->jobs;
-    ch->jobs = j;
-
-    return j->id;
+int             channel_register_job(Channel* ch, const CanFrame* fr, uint32_t period_ms){
+    if (!ch || !fr || period_ms==0) return CAN_ERR_INVALID;
+    if (!ch->adapter || !ch->adapter->v->ch_register_job) return CAN_ERR_INVALID;
+    return ch->adapter->v->ch_register_job(ch->adapter, ch->h, fr, period_ms);
 }
 
-can_err_t       channel_cancel_job  (Channel* ch, int jobId) {
-    if (!ch || jobId <= 0) return CAN_ERR_INVALID;
+int             channel_register_job_ex(Channel* ch, const CanFrame* initial, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user) {
+    if (!ch || !initial || period_ms==0) return CAN_ERR_INVALID;
+    if (!ch->adapter || !ch->adapter->v->ch_register_job_ex) return CAN_ERR_INVALID;
+    return ch->adapter->v->ch_register_job_ex(ch->adapter, ch->h, initial, period_ms, prep, prep_user);
 
-    Job** pp = &ch->jobs;
-    while (*pp) {
-        if ((*pp)->id == jobId) {
-            Job* del = *pp;
-            *pp = del->next;
-            free(del);
-            return CAN_OK;
-        }
-        pp = &(*pp)->next;
-    }
-    return CAN_ERR_INVALID;
 }
+can_err_t       channel_cancel_job(Channel* ch, int jobId) {
+    if (!ch || jobId<=0) return CAN_ERR_INVALID;
+    if (!ch->adapter || !ch->adapter->v->ch_cancel_job) return CAN_ERR_INVALID;
+    return ch->adapter->v->ch_cancel_job(ch->adapter, ch->h, jobId);
+}
+
+// int             channel_register_job(Channel* ch, CanFrame* frame, uint32_t period_ms) {
+//     if (!ch || !frame || period_ms == 0) return -1;
+
+//     Job* j = (Job*)calloc(1, sizeof(Job));
+//     if (!j) return -1;
+
+//     j->id        = ++ch->next_job_id;
+//     j->frame_ref = frame; 
+//     j->period_ms = period_ms;
+//     j->next_due_ms = 0; 
+
+//     j->next = ch->jobs;
+//     ch->jobs = j;
+
+//     return j->id;
+// }
+
+// can_err_t       channel_cancel_job  (Channel* ch, int jobId) {
+//     if (!ch || jobId <= 0) return CAN_ERR_INVALID;
+
+//     Job** pp = &ch->jobs;
+//     while (*pp) {
+//         if ((*pp)->id == jobId) {
+//             Job* del = *pp;
+//             *pp = del->next;
+//             free(del);
+//             return CAN_OK;
+//         }
+//         pp = &(*pp)->next;
+//     }
+//     return CAN_ERR_INVALID;
+// }
 
 int             channel_subscribe(Channel* ch, const CanFilter* filter, can_callback_t cb, void* user) {
     if (!ch || !filter || !cb) return -1;
