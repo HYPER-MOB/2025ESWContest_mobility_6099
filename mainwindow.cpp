@@ -14,30 +14,25 @@
 #include <QLabel>
 #include <QMetaObject>
 
+static const QString kSock = "/tmp/dcu.demo.sock";
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
 
-    // 창 크기 고정 (1024x600)
     setFixedSize(1024, 600);
-
-    // QMainWindow 고유 요소 숨김
     if (menuBar()) menuBar()->hide();
     if (statusBar()) statusBar()->hide();
-
-    // 프레임/타이틀바 제거
     setWindowFlags(Qt::FramelessWindowHint | Qt::Window);
 
-    // 인트로 페이지
     m_introPage = new QWidget(this);
     m_introPage->setObjectName("pageIntro");
     m_introPage->setStyleSheet("QWidget#pageIntro { background: #FFFFFF; }");
     ui->stack->insertWidget(0, m_introPage);
     ui->stack->setCurrentWidget(m_introPage);
 
-    // 인트로 라벨
     m_introLabel = new QLabel(m_introPage);
     m_introLabel->setObjectName("introLabel");
     m_introLabel->setAlignment(Qt::AlignCenter);
@@ -53,25 +48,24 @@ MainWindow::MainWindow(QWidget *parent)
     ui->stack->insertWidget(2, m_data);
     ui->stack->insertWidget(3, m_main);
 
-    // ✅ DataCheck에서 프로필이 확정되면 MainView 초기화
     connect(m_data, &DataCheckWindow::profileResolved,
             m_main, &MainView::loadInitialProfile);
 
-    // 인트로 애니메이션 시작
-    showIntroSequence();
 
-    // Auth → DataCheck
     connect(m_auth, &AuthWindow::authFinished, this, [this]{
-        bool hasData = false; // 필요하면 실제 값으로 세팅
+        bool hasData = false; 
         fadeToWidget(m_data);
         QMetaObject::invokeMethod(m_data, "begin", Qt::QueuedConnection,
                                   Q_ARG(bool, hasData));
     });
 
-    // DataCheck → Main
     connect(m_data, &DataCheckWindow::dataCheckFinished, this, [this]{
         fadeToWidget(m_main, 320);
     });
+
+    m_ipc = new IpcClient(kSock, this);
+    connect(m_ipc, &IpcClient::messageReceived, this, &MainWindow::onIpcMessage);
+
 }
 
 MainWindow::~MainWindow()
@@ -163,4 +157,14 @@ void MainWindow::showIntroSequence()
     });
 
     seq->start(QAbstractAnimation::DeleteWhenStopped);
+}
+
+void MainWindow::onIpcMessage(const IpcMessage& msg)
+{
+    if (msg.topic == "system/start") {
+        if (!m_bStart) {
+            m_bStart = true;
+            showIntroSequence(); 
+        }
+    }
 }

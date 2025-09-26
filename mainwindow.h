@@ -11,6 +11,7 @@
 #include <QEasingCurve>
 #include <QLabel>
 #include <QPauseAnimation>
+#include "ipc_client.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -27,6 +28,7 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+    void onIpcMessage(const IpcMessage& msg);
 
 private:
     Ui::MainWindow *ui;
@@ -37,6 +39,8 @@ private:
     // 인트로용 오버레이
     QLabel* m_introLabel = nullptr;
     QWidget* m_introPage = nullptr;
+    IpcClient* m_ipc = nullptr;
+    bool m_bStart = false;
 
     void showIntroSequence();  // 인트로 실행
 };
