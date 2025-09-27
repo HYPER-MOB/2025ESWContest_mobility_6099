@@ -1,7 +1,13 @@
 #include <QtCore>
 #include "ipc.h"
 
+// POSIX 입력용
+#include <sys/types.h>   // ssize_t
+#include <unistd.h>      // read(), STDIN_FILENO
+
 static const QString kSock = "/tmp/dcu.demo.sock";
+
+static QPointer<IpcConnection> g_conn;
 
 static void sendSystemStart(IpcConnection* c, const QString& reqId = {}) {
     if (!c) return;
@@ -44,6 +50,7 @@ static void sendPowerApplyAck(IpcConnection* c, bool ok, const QString& reqId = 
     c->send({ "power/apply/ack", reqId, QJsonObject{{"ok", ok}} });
 }
 
+// ---- main ----
 int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
 
@@ -55,26 +62,60 @@ int main(int argc, char** argv) {
     }
 
     server.addHandler("auth/result", [](const IpcMessage& m, IpcConnection* c) {
-        // QTimer::singleShot(2000, c, [m, c] {
-        //     sendAuthResult(c, "u123", 0.93, 0, m.reqId);
-        //     qInfo() << "[auth/result] reply sent after delay";
-        // });
+         QTimer::singleShot(2000, c, [m, c] {
+             sendAuthResult(c, "u123", 0.93, 0, m.reqId);
+             qInfo() << "[auth/result] reply sent after delay";
+         });
         });
 
     server.addHandler("data/result", [](const IpcMessage& m, IpcConnection* c) {
-        // QTimer::singleShot(1200, c, [=]{
-        //     sendDataResult(c, 10, 30, 0, m.reqId);
-        //     qInfo() << "[data/result] reply sent after delay";
-        // });
+         QTimer::singleShot(1200, c, [=]{
+             sendDataResult(c, 10, 30, 0, m.reqId);
+             qInfo() << "[data/result] reply sent after delay";
+         });
         });
 
     server.addHandler("power/apply", [](const IpcMessage& m, IpcConnection* c) {
-        // QTimer::singleShot(800, c, [=]{
-        //     sendPowerApplyAck(c, true, m.reqId);
-        //     qInfo() << "[power/apply] reply sent after delay";
-        // });
+         QTimer::singleShot(800, c, [=]{
+             sendPowerApplyAck(c, true, m.reqId);
+             qInfo() << "[power/apply] reply sent after delay";
+         });
         });
 
+    QObject::connect(&server, &IpcServer::clientConnected, [&](IpcConnection* c){
+        g_conn = c;
+        qInfo() << "[ipc] active conn set";
+    });
+    QObject::connect(&server, &IpcServer::clientDisconnected, [&](IpcConnection* c){
+        if (g_conn == c) g_conn = nullptr;
+    });
+
+    auto notifier = new QSocketNotifier(STDIN_FILENO, QSocketNotifier::Read, &app);
+    QObject::connect(notifier, &QSocketNotifier::activated, [&]{
+        char ch = 0;
+        const ssize_t n = ::read(STDIN_FILENO, &ch, 1);
+        if (n <= 0) return;
+
+        if (!g_conn) {
+            qWarning() << "No active IPC connection yet.";
+            return;
+        }
+
+        switch (ch) {
+        case 'a': case 'A':
+            sendSystemStart(g_conn, "req-a");
+            qInfo() << "[key a] system/start sent";
+            break;
+        case 'd': case 'D':
+            sendSystemWarning(g_conn, "W001", "졸음운전 발견!", "req-d");
+            qInfo() << "[key d] system/warning sent";
+            break;
+        default:
+            // 필요시 개행 제거 등 추가 처리 가능
+            break;
+        }
+    });
 
     return app.exec();
 }
+

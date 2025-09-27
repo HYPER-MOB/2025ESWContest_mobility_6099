@@ -5,17 +5,15 @@
 
 struct IpcMessage {
     QString topic;
-    QString reqId;         
-    QJsonObject payload;   
+    QString reqId;
+    QJsonObject payload;
 };
 
 class IpcConnection : public QObject {
     Q_OBJECT
 public:
     explicit IpcConnection(QLocalSocket* socket, QObject* parent = nullptr);
-
     void send(const IpcMessage& msg);
-
     QLocalSocket* socket() const { return m_sock; }
 
 signals:
@@ -30,7 +28,7 @@ private:
     void processBuffer();
 
     QLocalSocket* m_sock;
-    QByteArray m_buf; 
+    QByteArray m_buf;
 };
 
 class IpcServer : public QObject {
@@ -39,11 +37,13 @@ public:
     explicit IpcServer(const QString& socketPath, QObject* parent = nullptr);
 
     using Handler = std::function<void(const IpcMessage&, IpcConnection*)>;
-
     void addHandler(const QString& topicOrPrefix, Handler h);
-
     bool listen(QString* err = nullptr);
     void close();
+
+signals:                              // [+] 추가
+    void clientConnected(IpcConnection* conn);
+    void clientDisconnected(IpcConnection* conn);
 
 private slots:
     void onNewConnection();
@@ -57,8 +57,7 @@ private:
     QLocalServer* m_server;
     QSet<IpcConnection*> m_conns;
 
-    // 등록 순서 보존 + 빠른 조회를 위해 두 맵 병행
-    QHash<QString, Handler> m_exact;  
-    QList<QPair<QString, Handler>> m_prefix; 
+    QHash<QString, Handler> m_exact;
+    QList<QPair<QString, Handler>> m_prefix;
 };
 

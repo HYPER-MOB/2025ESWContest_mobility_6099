@@ -127,12 +127,13 @@ void IpcServer::onNewConnection() {
         connect(conn, &IpcConnection::messageReceived, this, &IpcServer::onMessage);
         connect(conn, &IpcConnection::disconnected, this, &IpcServer::onConnGone);
         qInfo() << "[ipc] client connected";
+        emit clientConnected(conn);                 
     }
 }
-
 void IpcServer::onConnGone(IpcConnection* conn) {
     m_conns.remove(conn);
     qInfo() << "[ipc] client disconnected";
+    emit clientDisconnected(conn);                  
 }
 
 IpcServer::Handler IpcServer::findHandler(const QString& topic) const {
