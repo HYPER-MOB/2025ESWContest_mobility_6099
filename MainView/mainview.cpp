@@ -19,6 +19,7 @@
 #include <algorithm>
 
 #include "../ipc_client.h"
+#include "../WarningDialog.h"
 
 namespace {
     const int SEAT_TILT_MIN = 0;
@@ -336,5 +337,19 @@ void MainView::onIpcMessage(const IpcMessage& msg)
     if (msg.topic == "power/apply/ack" && (!m_powerReqId.isEmpty() && msg.reqId == m_powerReqId)) {
         const bool ok = msg.payload.value("ok").toBool(false);
         qInfo() << "[power/apply/ack]" << ok << msg.payload;
+    }
+    if (msg.topic == "system/warning") {
+        const QString title   = msg.payload.value("title").toString(u8"경고");
+        const QString message = msg.payload.value("message").toString(u8"알 수 없는 경고가 발생했습니다.");
+
+        QMetaObject::invokeMethod(this, [=]{
+            auto* dlg = new WarningDialog(title, message, this);
+            dlg->setGeometry(
+                (width() - 400)/2,
+                (height() - 200)/2,
+                400, 200
+            );
+            dlg->show();
+        }, Qt::QueuedConnection);
     }
 }

@@ -32,6 +32,8 @@ set(PROJECT_SOURCES
     ipc_client.cpp
     ipc_client.h
 
+    WarningDialog.h
+
     resources.qrc
 )
 
