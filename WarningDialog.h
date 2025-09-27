@@ -15,7 +15,7 @@ public:
     {
         setWindowTitle(title);
         setModal(true);
-        setWindowFlags(windowFlags() | Qt::FramelessWindowHint); // 테두리 제거, 중앙 배치용
+        setWindowFlags(windowFlags() | Qt::FramelessWindowHint);
         setAttribute(Qt::WA_DeleteOnClose);
 
         auto* layout = new QVBoxLayout(this);
@@ -29,7 +29,7 @@ public:
         connect(btn, &QPushButton::clicked, this, &WarningDialog::accept);
         layout->addWidget(btn, 0, Qt::AlignCenter);
 
-        // 깜빡임 효과 (red ↔ transparent)
+
         m_timer = new QTimer(this);
         connect(m_timer, &QTimer::timeout, this, [this] {
             if (m_blink) {

@@ -15,7 +15,7 @@
 #include <QEasingCurve>
 #include <QJsonObject>
 #include <QDebug>
-#include <QLocalSocket>   // on_pushButton_clicked에서 사용
+#include <QLocalSocket>
 #include <algorithm>
 
 #include "../ipc_client.h"
@@ -157,20 +157,17 @@ MainView::MainView(QWidget *parent) :
         }
     });
 
-    // 시계
     updateClock();
     m_clockTimer = new QTimer(this);
     m_clockTimer->setInterval(1000);
     connect(m_clockTimer, &QTimer::timeout, this, &MainView::updateClock);
     m_clockTimer->start();
 
-    // 초기 표시 동기화
     updateSideMirrorLabel();
     ui->lblSeatTiltValue->setText(QString::number(m_seatTiltDeg) + u8"°");
     ui->lblSeatForeAftValue->setText(QString("%1 mm").arg(m_foreAft));
     ui->lblBackMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
 
-    // 대시보드도 초기값 반영
     syncDashboard();
 }
 
@@ -211,8 +208,6 @@ void MainView::loadInitialProfile(const QJsonObject& profile)
     ui->lblBackMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
 
     m_initializing = false;
-
-    // 프로필 로드 후 대시보드 반영
     syncDashboard();
 }
 
@@ -280,7 +275,6 @@ void MainView::fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs)
                 ui->btnMenu->setText("정지");
         }
 
-        // 대시보드가 보이게 된 시점에 값 동기화
         if (next == ui->pageDashboard) {
             syncDashboard();
         }
@@ -303,14 +297,12 @@ void MainView::updateSideMirrorLabel()
     const QString text = QString("L: %1 / R: %2").arg(m_sideL).arg(m_sideR);
     ui->lblSideMirrorValue->setText(text);
 
-    // 대시보드 L/R도 동기화
     if (ui->dashSideMirrorValue)
         ui->dashSideMirrorValue->setText(text);
 }
 
 void MainView::syncDashboard()
 {
-    // 대시보드 4개 라벨과 멤버 변수 동기화
     if (ui->dashRoomMirrorValue)
         ui->dashRoomMirrorValue->setText(QString::number(m_backMirrorDeg) + u8"°");
 
@@ -340,7 +332,7 @@ void MainView::onIpcMessage(const IpcMessage& msg)
     }
     if (msg.topic == "system/warning") {
         const QString title   = msg.payload.value("title").toString(u8"경고");
-        const QString message = msg.payload.value("message").toString(u8"알 수 없는 경고가 발생했습니다.");
+        const QString message = msg.payload.value("message").toString(u8"warnings");
 
         QMetaObject::invokeMethod(this, [=]{
             auto* dlg = new WarningDialog(title, message, this);

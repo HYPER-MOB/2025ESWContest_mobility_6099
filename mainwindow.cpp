@@ -64,8 +64,18 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     m_ipc = new IpcClient(kSock, this);
-    connect(m_ipc, &IpcClient::messageReceived, this, &MainWindow::onIpcMessage);
-
+    connect(m_ipc, &IpcClient::messageReceived,
+            this, [this](const IpcMessage& msg){
+                qInfo() << "[MainWindow] IPC recv topic=" << msg.topic
+                        << "payload=" << msg.payload
+                        << "reqId=" << msg.reqId;
+                onIpcMessage(msg);
+            });
+    QJsonObject hello{
+        {"who", "MainWindow"},
+        {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)}
+    };
+    m_ipc->send("system/hello", hello);
 }
 
 MainWindow::~MainWindow()
