@@ -47,7 +47,6 @@ constexpr int HANDLE_POS_STEP= 1;
 
 const QString kSock = "/tmp/dcu.demo.sock";
 
-// 버튼 선택 하이라이트 스타일 (checked 시 채우기)
 const char* kToggleQSS =
     "QPushButton {"
     "  border: 1px solid #B0B0B0; border-radius: 8px; padding: 6px 10px;"
@@ -115,7 +114,6 @@ MainView::MainView(QWidget *parent)
         updateRoomMirrorLabel();
     });
 
-    // ===== 서브 버튼 그룹 구성 & 토글 스타일 =====
     // Handle page
     m_groupHandle = new QButtonGroup(this);
     m_groupHandle->setExclusive(true);
@@ -201,8 +199,8 @@ MainView::MainView(QWidget *parent)
                 } else {
                     m_sideMirrorRightPitch = std::min(ANGLE_MIRROR_MAX, m_sideMirrorRightPitch + ANGLE_STEP);
                     sendApply(QJsonObject{{"sideMirrorRightPitch", m_sideMirrorRightPitch}});
+                    }
                 }
-            }
             updateSideMirrorLabel();
             break;
         }
@@ -333,8 +331,6 @@ void MainView::initButtonAsToggle(QAbstractButton* btn)
 void MainView::highlightChecked(QButtonGroup* group)
 {
     if (!group) return;
-    // 스타일은 QSS로 처리하므로 여기서는 별도 동작 불필요.
-    // 필요하다면 그룹 내 버튼 상태를 검사해 추가 로직 가능.
     (void)group;
 }
 
@@ -374,6 +370,9 @@ void MainView::loadInitialProfile(const QJsonObject& profile)
 
     m_initializing = false;
     syncDashboard();
+
+
+    m_ipc->send("connect", {});
 }
 
 void MainView::on_pushButton_clicked()
@@ -455,9 +454,10 @@ void MainView::fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs)
     seq->addAnimation(fadeOut);
     seq->addAnimation(fadeIn);
     seq->start(QAbstractAnimation::DeleteWhenStopped);
+
+
 }
 
-// ===== 페이지 라벨 업데이트 =====
 
 void MainView::updateHandleLabel()
 {
@@ -472,7 +472,6 @@ void MainView::updateHandleLabel()
 
 void MainView::updateRoomMirrorLabel()
 {
-    // 현재 서브 선택에 따라 pitch 또는 yaw
     if (ui->btnRoomMirrorPitch->isChecked()) {
         if (ui->lblRoomMirrorValue)
             ui->lblRoomMirrorValue->setText(QString("Pitch %1°").arg(m_roomMirrorPitch));
@@ -494,7 +493,7 @@ void MainView::updateSeatLabel()
     } else { // Rear
         text = QString("Rear %1%").arg(m_seatRearHeight);
     }
-    if (ui->lblSeatForeAftValue) // 기존 라벨 재사용
+    if (ui->lblSeatForeAftValue)
         ui->lblSeatForeAftValue->setText(text);
 }
 
@@ -513,33 +512,38 @@ void MainView::updateSideMirrorLabel()
         ui->lblSideMirrorValue->setText(text);
 }
 
-// ===== 대시보드 요약 =====
-// 기존 대시보드 라벨 이름을 유지하면서, 새 값들에서 대표값을 골라 요약 표기
+
 void MainView::syncDashboard()
 {
+    if (ui->dashHandleValue)
+        ui->dashHandleValue->setText(
+            QString("Pos %1 / Angle %2°")
+                .arg(m_handlePosition)
+                .arg(m_handleAngle));
+
     if (ui->dashRoomMirrorValue)
         ui->dashRoomMirrorValue->setText(
-            QString("Yaw %1° / Pitch %2°").arg(m_roomMirrorYaw).arg(m_roomMirrorPitch));
+            QString("Yaw %1°\nPitch %2°")
+                .arg(m_roomMirrorYaw)
+                .arg(m_roomMirrorPitch));
 
-    if (ui->dashSeatTiltValue)
-        ui->dashSeatTiltValue->setText(
-            QString("Angle %1°").arg(m_seatAngle));
+    if (ui->dashSeatValue)
+        ui->dashSeatValue->setText(
+            QString("Pos %1%\nAngle %2°\nFront %3%\nRear %4%")
+                .arg(m_seatPosition)
+                .arg(m_seatAngle)
+                .arg(m_seatFrontHeight)
+                .arg(m_seatRearHeight));
 
     if (ui->dashSideMirrorValue)
         ui->dashSideMirrorValue->setText(
-            QString("L(Y:%1/P:%2)  R(Y:%3/P:%4)")
+            QString("L: Y%1°/P%2°\nR: Y%3°/P%4°")
                 .arg(m_sideMirrorLeftYaw)
                 .arg(m_sideMirrorLeftPitch)
                 .arg(m_sideMirrorRightYaw)
                 .arg(m_sideMirrorRightPitch));
-
-    if (ui->dashSeatFwdValue)
-        ui->dashSeatFwdValue->setText(
-            QString("Pos %1% / F %2% / R %3%")
-                .arg(m_seatPosition)
-                .arg(m_seatFrontHeight)
-                .arg(m_seatRearHeight));
 }
+
 
 // ===== IPC =====
 

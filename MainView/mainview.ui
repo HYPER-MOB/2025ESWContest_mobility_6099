@@ -206,9 +206,35 @@
         <item>
          <widget class="QStackedWidget" name="stackedCenter">
           <property name="currentIndex">
-           <number>1</number>
+           <number>0</number>
           </property>
           <widget class="QWidget" name="pageDashboard">
+           <property name="styleSheet">
+            <string notr="true">QFrame#dashHandleFrame, 
+QFrame#dashRoomMirrorFrame,
+QFrame#dashSeatFrame,
+QFrame#dashSideMirrorFrame {
+    background: #FFFFFF;
+    border: 2px solid #444;
+    border-radius: 12px;
+    padding: 8px;
+}
+
+QLabel#dashHandleText, QLabel#dashRoomMirrorText,
+QLabel#dashSeatText, QLabel#dashSideMirrorText {
+    font-size: 18px;
+    font-weight: bold;
+    qproperty-alignment: 'AlignCenter';
+}
+
+QLabel#dashHandleValue, QLabel#dashRoomMirrorValue,
+QLabel#dashSeatValue, QLabel#dashSideMirrorValue {
+    font-size: 22px;
+    font-weight: 700;
+    qproperty-alignment: 'AlignCenter';
+}
+</string>
+           </property>
            <layout class="QVBoxLayout" name="verticalLayout_11">
             <item>
              <widget class="QFrame" name="frameDashboard">
@@ -227,11 +253,11 @@
                  <property name="frameShadow">
                   <enum>QFrame::Raised</enum>
                  </property>
-                 <layout class="QVBoxLayout" name="verticalLayout_2">
+                 <layout class="QVBoxLayout" name="verticalLayout_2" stretch="1,4">
                   <item>
                    <widget class="QLabel" name="dashSideMirrorText">
                     <property name="text">
-                     <string>TextLabel</string>
+                     <string>Side Mirror</string>
                     </property>
                    </widget>
                   </item>
@@ -246,23 +272,23 @@
                 </widget>
                </item>
                <item row="1" column="1">
-                <widget class="QFrame" name="dashSeatTileFrame">
+                <widget class="QFrame" name="dashSeatFrame">
                  <property name="frameShape">
                   <enum>QFrame::StyledPanel</enum>
                  </property>
                  <property name="frameShadow">
                   <enum>QFrame::Raised</enum>
                  </property>
-                 <layout class="QVBoxLayout" name="verticalLayout_15">
+                 <layout class="QVBoxLayout" name="verticalLayout_15" stretch="1,4">
                   <item>
-                   <widget class="QLabel" name="dashSeatTiltText">
+                   <widget class="QLabel" name="dashSeatText">
                     <property name="text">
-                     <string>TextLabel</string>
+                     <string>Seat</string>
                     </property>
                    </widget>
                   </item>
                   <item>
-                   <widget class="QLabel" name="dashSeatTiltValue">
+                   <widget class="QLabel" name="dashSeatValue">
                     <property name="text">
                      <string>TextLabel</string>
                     </property>
@@ -272,23 +298,23 @@
                 </widget>
                </item>
                <item row="4" column="0">
-                <widget class="QFrame" name="dashSeatFwdFrame">
+                <widget class="QFrame" name="dashHandleFrame">
                  <property name="frameShape">
                   <enum>QFrame::StyledPanel</enum>
                  </property>
                  <property name="frameShadow">
                   <enum>QFrame::Raised</enum>
                  </property>
-                 <layout class="QVBoxLayout" name="verticalLayout_14">
+                 <layout class="QVBoxLayout" name="verticalLayout_14" stretch="1,4">
                   <item>
-                   <widget class="QLabel" name="dashSeatFwdText">
+                   <widget class="QLabel" name="dashHandleText">
                     <property name="text">
-                     <string>TextLabel</string>
+                     <string>Handle</string>
                     </property>
                    </widget>
                   </item>
                   <item>
-                   <widget class="QLabel" name="dashSeatFwdValue">
+                   <widget class="QLabel" name="dashHandleValue">
                     <property name="text">
                      <string>TextLabel</string>
                     </property>
@@ -305,11 +331,11 @@
                  <property name="frameShadow">
                   <enum>QFrame::Raised</enum>
                  </property>
-                 <layout class="QVBoxLayout" name="verticalLayout_16">
+                 <layout class="QVBoxLayout" name="verticalLayout_16" stretch="1,4">
                   <item>
                    <widget class="QLabel" name="dashRoomMirrorText">
                     <property name="text">
-                     <string>TextLabel</string>
+                     <string>RoomMirror</string>
                     </property>
                    </widget>
                   </item>

@@ -51,7 +51,6 @@ private:
     QTimer* m_clockTimer = nullptr;
     bool m_initializing = false;
 
-    // ====== 새 데이터 (구변수 완전 제거) ======
     // Seat
     int m_seatPosition = 0;      // 0~100 (%)
     int m_seatAngle = 0;         // 0~180 (deg)
