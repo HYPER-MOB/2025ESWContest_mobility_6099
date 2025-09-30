@@ -81,6 +81,10 @@ int main(int argc, char** argv) {
              qInfo() << "[power/apply] reply sent after delay";
          });
         });
+        
+    server.addHandler("connect", [](const IpcMessage& m, IpcConnection* c) {
+         });
+
 
     QObject::connect(&server, &IpcServer::clientConnected, [&](IpcConnection* c){
         g_conn = c;
