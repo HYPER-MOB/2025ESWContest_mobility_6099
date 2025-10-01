@@ -57,41 +57,36 @@ static void sendAuthResult(IpcConnection* c, const QString& userId, double score
 static void sendDataResult(IpcConnection* c, int error = 0, const QString& reqId = {}) {
     if (!c) return;
 
-    QJsonObject seatObj{
-        {"position",     m_seatPosition},
-        {"angle",        m_seatAngle},
-        {"frontHeight",  m_seatFrontHeight},
-        {"rearHeight",   m_seatRearHeight}
+    QJsonObject data{
+        // Seat
+        {"seatPosition",    m_seatPosition},
+        {"seatAngle",       m_seatAngle},
+        {"seatFrontHeight", m_seatFrontHeight},
+        {"seatRearHeight",  m_seatRearHeight},
+
+        // Side Mirror
+        {"sideMirrorLeftYaw",    m_sideMirrorLeftYaw},
+        {"sideMirrorLeftPitch",  m_sideMirrorLeftPitch},
+        {"sideMirrorRightYaw",   m_sideMirrorRightYaw},
+        {"sideMirrorRightPitch", m_sideMirrorRightPitch},
+
+        // Room Mirror
+        {"roomMirrorYaw",   m_roomMirrorYaw},
+        {"roomMirrorPitch", m_roomMirrorPitch},
+
+        // Handle
+        {"handlePosition",  m_handlePosition},
+        {"handleAngle",     m_handleAngle}
     };
 
-    QJsonObject sideMirrorObj{
-        {"leftYaw",   m_sideMirrorLeftYaw},
-        {"leftPitch", m_sideMirrorLeftPitch},
-        {"rightYaw",  m_sideMirrorRightYaw},
-        {"rightPitch",m_sideMirrorRightPitch}
-    };
-
-    QJsonObject roomMirrorObj{
-        {"yaw",   m_roomMirrorYaw},
-        {"pitch", m_roomMirrorPitch}
-    };
-
-    QJsonObject handleObj{
-        {"position", m_handlePosition},
-        {"angle",    m_handleAngle}
-    };
-
-    QJsonObject dataObj{
-        {"seat",       seatObj},
-        {"sideMirror", sideMirrorObj},
-        {"roomMirror", roomMirrorObj},
-        {"handle",     handleObj}
-    };
-
-    c->send({ "data/result", reqId, QJsonObject{
-        {"error", error},
-        {"data",  dataObj}
-    } });
+    c->send({
+        "data/result",
+        reqId,
+        QJsonObject{
+            {"error", error},
+            {"data",  data}
+        }
+        });
 }
 
 
@@ -182,13 +177,10 @@ int main(int argc, char** argv) {
 
     server.addHandler("data/result", [](const IpcMessage& m, IpcConnection* c) {
         QTimer::singleShot(1200, c, [=] {
-            sendDataResult(c, 0, m.reqId);   
+            sendDataResult(c, 0, m.reqId);  
             qInfo() << "[data/result] reply sent after delay";
             });
-
-        /*
-        TCU_USER_DATA_REQ 메시지를 CAN에 보내야함
-        */
+        // TODO: TCU_USER_DATA_REQ CAN 송신 로직
         });
 
     server.addHandler("power/apply", [](const IpcMessage& m, IpcConnection* c) {
