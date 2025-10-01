@@ -72,6 +72,7 @@ typedef struct {
 } CanConfig;
 
 typedef void (*can_callback_t)(const CanFrame* frame, void* user);
+typedef void (*can_tx_prepare_cb_t)(CanFrame* io_frame, void* user);
 
 can_err_t   can_init(can_device_t device);
 void        can_dispose();
@@ -81,7 +82,8 @@ can_err_t   can_close(const char* name);
 //can_err_t   can_stop(const char* name);
 can_err_t   can_send(const char* name, CanFrame frame, uint32_t timeout_ms);
 can_err_t   can_recv(const char* name, CanFrame* out, uint32_t timeout_ms);
-int         can_register_job(const char* name, CanFrame* frame, uint32_t period_ms);
+int         can_register_job(const char* name, const CanFrame* frame, uint32_t period_ms);
+int         can_register_job_ex(const char* name, const CanFrame* frame, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user);
 can_err_t   can_cancel_job(const char* name, int jobId);
 int         can_subscribe(const char* name, CanFilter filter, can_callback_t callback, void* user);
 can_err_t   can_unsubscribe(const char* name, int subId);

@@ -120,7 +120,7 @@ can_err_t   can_recv(const char* name, CanFrame* out, uint32_t timeout_ms) {
     return channel_read(ch, out, timeout_ms);  
 }
 
-int         can_register_job(const char* name, CanFrame* frame, uint32_t period_ms) {
+int         can_register_job(const char* name, const CanFrame* frame, uint32_t period_ms) {
     if(!g_state.initialized) return CAN_ERR_STATE;
     if(!name || name[0] == '\0') return CAN_ERR_INVALID;
 
@@ -128,6 +128,16 @@ int         can_register_job(const char* name, CanFrame* frame, uint32_t period_
     if(!ch) return CAN_ERR_INVALID;
 
     return channel_register_job(ch, frame, period_ms);
+}
+
+int         can_register_job_ex(const char* name, const CanFrame* frame, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user) {
+    if(!g_state.initialized) return CAN_ERR_STATE;
+    if(!name || name[0] == '\0') return CAN_ERR_INVALID;
+
+    Channel* ch = find_by_name(name);
+    if(!ch) return CAN_ERR_INVALID;
+
+    return channel_register_job_ex(ch, frame, period_ms, prep, prep_user);
 }
 
 can_err_t   can_cancel_job(const char* name, int jobId) {
