@@ -52,12 +52,15 @@ MainWindow::MainWindow(QWidget *parent)
             m_main, &MainView::loadInitialProfile);
 
 
-    connect(m_auth, &AuthWindow::authFinished, this, [this]{
-        bool hasData = false; 
+    connect(m_auth, &AuthWindow::authFinished, this, [this](const QJsonObject& authPayload) {
         fadeToWidget(m_data);
-        QMetaObject::invokeMethod(m_data, "begin", Qt::QueuedConnection,
-                                  Q_ARG(bool, hasData));
-    });
+        QMetaObject::invokeMethod(
+            m_data,
+            "beginWithAuth",
+            Qt::QueuedConnection,
+            Q_ARG(QJsonObject, authPayload) 
+        );
+        });
 
     connect(m_data, &DataCheckWindow::dataCheckFinished, this, [this]{
         fadeToWidget(m_main, 320);

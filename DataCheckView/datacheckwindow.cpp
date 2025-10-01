@@ -26,21 +26,30 @@ DataCheckWindow::DataCheckWindow(QWidget *parent)
 DataCheckWindow::~DataCheckWindow() { delete ui; }
 
 void DataCheckWindow::begin(bool /*hasData*/) {
-    m_phase   = Phase::Checking;
+    m_authPayload = QJsonObject{};     // 기본/빈 시작
+    // ↓ 공통 시작 로직 호출
+    beginWithAuth(m_authPayload);
+}
+
+void DataCheckWindow::beginWithAuth(const QJsonObject& authPayload) {
+    m_phase = Phase::Checking;
     m_hasData = false;
     m_dataPayload = QJsonObject{};
     m_dataReqId.clear();
     m_powerReqId.clear();
+    m_authPayload = authPayload;       
 
     setMessage(QStringLiteral("데이터가 있는지 확인합니다..."), true);
     ui->progressLine->setRange(0, 0);
 
     QJsonObject payload{
         {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
-        {"query", "user-profile"}
+        {"query", "user-profile"},
+        {"auth", m_authPayload}     
     };
-    m_dataReqId = m_ipc->send("data/result", payload);
 
+
+    m_dataReqId = m_ipc->send("data/result", payload);
     m_waitTimer.start(5000);
 }
 

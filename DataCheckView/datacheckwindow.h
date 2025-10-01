@@ -18,7 +18,8 @@ signals:
     void profileResolved(const QJsonObject& profile);
 
 private slots:
-    void begin(bool hasData );
+    void begin(bool hasData )override;
+    void beginWithAuth(const QJsonObject& authPayload);
     void advance();
     void onIpcMessage(const IpcMessage& msg);
     void onWaitTimeout();
@@ -37,6 +38,7 @@ private:
     QString m_dataReqId;
     QString m_powerReqId;
     QJsonObject m_dataPayload;
+    QJsonObject m_authPayload; 
 
     bool m_hasData = false;
     Phase m_phase = Phase::Idle;

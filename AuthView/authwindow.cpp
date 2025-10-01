@@ -76,19 +76,20 @@ void AuthWindow::onIpcMessage(const IpcMessage& msg) {
         ui->progressLine->setRange(0, 100);
         ui->progressLine->setValue(100);
 
-        QTimer::singleShot(2000, this, [this]{
+        QTimer::singleShot(2000, this, [this, p] {
             m_phase = Phase::Done;
-            emit authFinished();
-        });
-    } else {
+            emit authFinished(p);  
+            });
+    }
+    else {
         m_phase = Phase::RetryNotice;
         setMessage(QStringLiteral("재시도하겠습니다."), false);
         ui->progressLine->setRange(0, 100);
         ui->progressLine->setValue(0);
-
         m_timer.start(2000);
     }
 }
+
 
 void AuthWindow::onWaitTimeout() {
     m_phase = Phase::RetryNotice;

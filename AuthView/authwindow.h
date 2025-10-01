@@ -14,7 +14,7 @@ public:
 
 
 signals:
-    void authFinished();
+    void authFinished(const QJsonObject& authPayload);
 
 private slots:
         void begin();
