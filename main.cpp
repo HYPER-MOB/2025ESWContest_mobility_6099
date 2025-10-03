@@ -10,16 +10,16 @@ static const QString kSock = "/tmp/dcu.demo.sock";
 static QPointer<IpcConnection> g_conn;
 
 // Seat
-int m_seatPosition = 0;      // 0~100 (%)
-int m_seatAngle = 0;         // 0~180 (deg)
-int m_seatFrontHeight = 0;   // 0~100 (%)
-int m_seatRearHeight = 0;    // 0~100 (%)
+int m_seatPosition = 20;      // 0~100 (%)
+int m_seatAngle = 10;         // 0~180 (deg)
+int m_seatFrontHeight = 20;   // 0~100 (%)
+int m_seatRearHeight = 20;    // 0~100 (%)
 
 // Side Mirror (Left/Right × Yaw/Pitch)
-int m_sideMirrorLeftYaw = 0;  // -45~45 (deg)
-int m_sideMirrorLeftPitch = 0;  // -45~45 (deg)
-int m_sideMirrorRightYaw = 0;  // -45~45 (deg)
-int m_sideMirrorRightPitch = 0;  // -45~45 (deg)
+int m_sideMirrorLeftYaw = 10;  // -45~45 (deg)
+int m_sideMirrorLeftPitch = 20;  // -45~45 (deg)
+int m_sideMirrorRightYaw = 20;  // -45~45 (deg)
+int m_sideMirrorRightPitch = 20;  // -45~45 (deg)
 
 // Room Mirror
 int m_roomMirrorYaw = 0;      // -45~45 (deg)
@@ -28,6 +28,10 @@ int m_roomMirrorPitch = 0;      // -45~45 (deg)
 // Handle
 int m_handlePosition = 0;    // 0~100 (arbitrary unit)
 int m_handleAngle = 0;    // -90~90 (deg)
+
+static inline int clampInt(int v, int lo, int hi) {
+    return std::min(hi, std::max(lo, v));
+}
 
 static void sendSystemStart(IpcConnection* c, const QString& reqId = {}) {
     if (!c) return;
@@ -102,6 +106,42 @@ static void sendAuthProcess(IpcConnection* c, const QString& text, const QString
         {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)}
     }});
 }
+
+static void applyPowerPayloadToState(const QJsonObject& p)
+{
+    // Seat
+    if (p.contains("seatPosition"))
+        m_seatPosition = clampInt(p.value("seatPosition").toInt(), 0, 100);
+    if (p.contains("seatAngle"))
+        m_seatAngle = clampInt(p.value("seatAngle").toInt(), 0, 180);
+    if (p.contains("seatFrontHeight"))
+        m_seatFrontHeight = clampInt(p.value("seatFrontHeight").toInt(), 0, 100);
+    if (p.contains("seatRearHeight"))
+        m_seatRearHeight = clampInt(p.value("seatRearHeight").toInt(), 0, 100);
+
+    // Side Mirror
+    if (p.contains("sideMirrorLeftYaw"))
+        m_sideMirrorLeftYaw = clampInt(p.value("sideMirrorLeftYaw").toInt(), -45, 45);
+    if (p.contains("sideMirrorLeftPitch"))
+        m_sideMirrorLeftPitch = clampInt(p.value("sideMirrorLeftPitch").toInt(), -45, 45);
+    if (p.contains("sideMirrorRightYaw"))
+        m_sideMirrorRightYaw = clampInt(p.value("sideMirrorRightYaw").toInt(), -45, 45);
+    if (p.contains("sideMirrorRightPitch"))
+        m_sideMirrorRightPitch = clampInt(p.value("sideMirrorRightPitch").toInt(), -45, 45);
+
+    // Room Mirror
+    if (p.contains("roomMirrorYaw"))
+        m_roomMirrorYaw = clampInt(p.value("roomMirrorYaw").toInt(), -45, 45);
+    if (p.contains("roomMirrorPitch"))
+        m_roomMirrorPitch = clampInt(p.value("roomMirrorPitch").toInt(), -45, 45);
+
+    // Handle
+    if (p.contains("handlePosition"))
+        m_handlePosition = clampInt(p.value("handlePosition").toInt(), 0, 100);
+    if (p.contains("handleAngle"))
+        m_handleAngle = clampInt(p.value("handleAngle").toInt(), -90, 90);
+}
+
 
 //
 /*
@@ -190,9 +230,7 @@ server.addHandler("auth/result", [](const IpcMessage& m, IpcConnection* c) {
 
     /*
       TODO:
-      - 여기에서 실제로는 DCU_USER_FACE_REQ 를 CAN으로 송신해
-        Bluetooth/NFC 과정을 트리거하고,
-        중간 상태를 수신할 때마다 auth/process 로 흘려보내면 됩니다.
+      - 여기에서 실제로는 DCU_USER_FACE_REQ 를 CAN으로 송신
     */
 });
 
@@ -204,18 +242,20 @@ server.addHandler("auth/result", [](const IpcMessage& m, IpcConnection* c) {
         // TODO: TCU_USER_DATA_REQ CAN 송신 로직
         });
 
-    server.addHandler("power/apply", [](const IpcMessage& m, IpcConnection* c) {
-         QTimer::singleShot(800, c, [=]{
-             sendPowerApplyAck(c, true, m.reqId);
-             qInfo() << "[power/apply] reply sent after delay";
-         });
-        /*
-        여기서는 온 데이터를 BODY CAN에 적용하도록 보내는 로직 추가해야함
-        */
-        
-        
-        
-        });
+server.addHandler("power/apply", [](const IpcMessage& m, IpcConnection* c) {
+
+    const QByteArray compact = QJsonDocument(m.payload).toJson(QJsonDocument::Compact);
+    qInfo() << "[power/apply] recv reqId=" << m.reqId << compact;
+
+    applyPowerPayloadToState(m.payload);
+
+    // (옵션) 여기서 CAN TX 로직 호출
+    QTimer::singleShot(800, c, [=]{
+        sendPowerApplyAck(c, /*ok=*/true, m.reqId);
+        qInfo() << "[power/apply] ack sent (ok=true)";
+    });
+});
+
         
     server.addHandler("connect", [](const IpcMessage& m, IpcConnection* c) {
          });
