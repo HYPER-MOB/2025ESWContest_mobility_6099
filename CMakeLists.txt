@@ -9,7 +9,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt5 REQUIRED COMPONENTS Core Widgets Network)
+find_package(Qt5 REQUIRED COMPONENTS Core Widgets Network Multimedia)
 
 set(PROJECT_SOURCES
     main.cpp
@@ -41,10 +41,12 @@ add_executable(DCU_UI
     ${PROJECT_SOURCES}
 )
 
+
 target_link_libraries(DCU_UI PRIVATE
     Qt5::Core
     Qt5::Widgets
     Qt5::Network
+    Qt5::Multimedia
 )
 
 set_target_properties(DCU_UI PROPERTIES

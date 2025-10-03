@@ -6,5 +6,7 @@
         <file>images/RoomMirror.png</file>
         <file>images/SeatTilt.png</file>
         <file>images/SideMirror.png</file>
+        <file>images/handle.png</file>
+        <file>MainView/siren.mp3</file>
     </qresource>
 </RCC>

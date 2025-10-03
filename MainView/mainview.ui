@@ -662,7 +662,7 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                  <item>
                   <widget class="QStackedWidget" name="stkDetail">
                    <property name="currentIndex">
-                    <number>2</number>
+                    <number>0</number>
                    </property>
                    <widget class="QWidget" name="pageHandle">
                     <property name="sizePolicy">
@@ -715,7 +715,7 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                            <string/>
                           </property>
                           <property name="pixmap">
-                           <pixmap resource="../resources.qrc">:/images/images/SeatTilt.png</pixmap>
+                           <pixmap resource="../resources.qrc">:/images/images/handle.png</pixmap>
                           </property>
                           <property name="scaledContents">
                            <bool>true</bool>

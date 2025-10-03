@@ -9,9 +9,9 @@
 #include <QGraphicsOpacityEffect>
 #include <QStackedWidget>
 #include <QJsonObject>
-
 #include "../ipc_client.h"
-
+#include <QMediaPlayer>
+#include <QMediaPlaylist>
 namespace Ui {
 class MainView;
 }
@@ -81,6 +81,12 @@ private:
     // IPC
     IpcClient* m_ipc = nullptr;
     QString m_powerReqId;
+
+    QMediaPlayer*   m_sirenPlayer = nullptr;
+    QMediaPlaylist* m_sirenList   = nullptr;
+    void startSiren();
+    void stopSiren();
+
 };
 
 #endif // MAINVIEW_H

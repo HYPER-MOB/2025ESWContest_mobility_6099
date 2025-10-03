@@ -317,9 +317,44 @@ MainView::MainView(QWidget *parent)
     updateRoomMirrorLabel();
     updateSideMirrorLabel();
     syncDashboard();
+
+
+    m_sirenList = new QMediaPlaylist(this);
+    m_sirenList->setPlaybackMode(QMediaPlaylist::Loop);
+
+    // 리소스 사용 시
+    m_sirenList->addMedia(QUrl("qrc:/images/MainView/siren.mp3"));
+    m_sirenList->setCurrentIndex(0);  // 안전하게 첫 곡 지정
+    // 로컬 경로 사용 시 (위 줄 대신)
+    // m_sirenList->addMedia(QUrl::fromLocalFile("/absolute/or/relative/path/siren.mp3"));
+
+    m_sirenPlayer = new QMediaPlayer(this);
+    m_sirenPlayer->setPlaylist(m_sirenList);
+    m_sirenPlayer->setVolume(100); // 0~100
+
+    qInfo() << "[siren] exists?"
+            << QFile(":/images/MainView/siren.mp3").exists(); // true면 OK
+
 }
 
 MainView::~MainView() { delete ui; }
+
+void MainView::startSiren() {
+    if (!m_sirenPlayer) return;
+    if (m_sirenPlayer->state() != QMediaPlayer::PlayingState) {
+        m_sirenPlayer->play();
+        qInfo() << "[siren] started";
+    }
+}
+
+void MainView::stopSiren() {
+    if (!m_sirenPlayer) return;
+    if (m_sirenPlayer->state() != QMediaPlayer::StoppedState) {
+        m_sirenPlayer->stop();
+        qInfo() << "[siren] stopped";
+    }
+}
+
 
 void MainView::initButtonAsToggle(QAbstractButton* btn)
 {
@@ -564,10 +599,21 @@ void MainView::onIpcMessage(const IpcMessage& msg)
     if (msg.topic == "system/warning") {
         const QString title   = msg.payload.value("title").toString(u8"경고");
         const QString message = msg.payload.value("message").toString(u8"warnings");
+
+        // 사이렌 시작
+        startSiren();
+
         QMetaObject::invokeMethod(this, [=]{
             auto* dlg = new WarningDialog(title, message, this);
             dlg->setGeometry((width()-400)/2, (height()-200)/2, 400, 200);
+
+            // 경고창 닫히면 사이렌 멈춤
+            connect(dlg, &QDialog::finished, this, [this](int){
+                stopSiren();
+            });
+
             dlg->show();
         }, Qt::QueuedConnection);
     }
+
 }
