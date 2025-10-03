@@ -57,14 +57,14 @@
       background: #CFCFCF;
     }
 
-    QLabel#lblSeatTiltValue, QLabel#lblSideMirrorValue,
-    QLabel#lblSeatForeAftValue, QLabel#lblBackMirrorValue {
+    QLabel#lblSeatValue, QLabel#lblSideMirrorValue,
+    QLabel#lblHandleValue, QLabel#lblRoomMirrorValue {
       font-size: 22px;
       font-weight: 700;
     }
 
     QLabel#lblSeatPic, QLabel#lblSideMirrorPic,
-    QLabel#lblSeatForeAftPic, QLabel#lblBackMirrorPic {
+    QLabel#lblHandlePic, QLabel#lblRoomMirrorPic {
       background: transparent;
     }
 
@@ -206,7 +206,7 @@
         <item>
          <widget class="QStackedWidget" name="stackedCenter">
           <property name="currentIndex">
-           <number>0</number>
+           <number>1</number>
           </property>
           <widget class="QWidget" name="pageDashboard">
            <property name="styleSheet">
@@ -380,10 +380,10 @@ QWidget#pageSettings #pnlSettingList {
   padding: 8px;
 }
 
-QWidget#pageSettings QPushButton#btnSeatTilt,
+QWidget#pageSettings QPushButton#btnHandle,
 QWidget#pageSettings QPushButton#btnSideMirror,
-QWidget#pageSettings QPushButton#btnSeatForeAft,
-QWidget#pageSettings QPushButton#btnBackMirror {
+QWidget#pageSettings QPushButton#btnSeat,
+QWidget#pageSettings QPushButton#btnRoomMirror {
   border: 2px solid #BDBDBD;
   border-radius: 8px;
   background: #FFFFFF;
@@ -662,7 +662,7 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                  <item>
                   <widget class="QStackedWidget" name="stkDetail">
                    <property name="currentIndex">
-                    <number>0</number>
+                    <number>2</number>
                    </property>
                    <widget class="QWidget" name="pageHandle">
                     <property name="sizePolicy">
@@ -885,7 +885,7 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                    <widget class="QWidget" name="pageSeat">
                     <layout class="QVBoxLayout" name="verticalLayout_7" stretch="1,7,4,2">
                      <item>
-                      <widget class="QLabel" name="lblSeatForeAftText">
+                      <widget class="QLabel" name="lblSeatText">
                        <property name="text">
                         <string>시트</string>
                        </property>
@@ -969,7 +969,7 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                       </widget>
                      </item>
                      <item>
-                      <widget class="QLabel" name="lblSeatForeAftValue">
+                      <widget class="QLabel" name="lblSeatValue">
                        <property name="text">
                         <string>TextLabel</string>
                        </property>

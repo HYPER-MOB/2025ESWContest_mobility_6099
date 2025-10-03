@@ -493,8 +493,8 @@ void MainView::updateSeatLabel()
     } else { // Rear
         text = QString("Rear %1%").arg(m_seatRearHeight);
     }
-    if (ui->lblSeatForeAftValue)
-        ui->lblSeatForeAftValue->setText(text);
+    if (ui->lblSeatValue)
+        ui->lblSeatValue->setText(text);
 }
 
 void MainView::updateSideMirrorLabel()

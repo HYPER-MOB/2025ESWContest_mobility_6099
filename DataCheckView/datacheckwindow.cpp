@@ -34,8 +34,8 @@ DataCheckWindow::DataCheckWindow(QWidget *parent)
 DataCheckWindow::~DataCheckWindow() { delete ui; }
 
 void DataCheckWindow::begin(bool /*hasData*/) {
-    m_authPayload = QJsonObject{};     // 기본/빈 시작
-    // ↓ 공통 시작 로직 호출
+    m_authPayload = QJsonObject{};
+
     beginWithAuth(m_authPayload);
 }
 
@@ -47,7 +47,7 @@ void DataCheckWindow::beginWithAuth(const QJsonObject& authPayload) {
     m_powerReqId.clear();
     m_authPayload = authPayload;
 
-    // === 로깅: Auth에서 넘어온 payload ===
+
     qInfo().noquote() << "[DATACHECK] beginWithAuth: authPayload=" << asJsonCompact(m_authPayload);
 
 
