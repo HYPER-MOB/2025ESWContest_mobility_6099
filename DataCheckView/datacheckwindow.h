@@ -18,7 +18,7 @@ signals:
     void profileResolved(const QJsonObject& profile);
 
 private slots:
-    void begin(bool hasData )override;
+    void begin(bool hasData );
     void beginWithAuth(const QJsonObject& authPayload);
     void advance();
     void onIpcMessage(const IpcMessage& msg);

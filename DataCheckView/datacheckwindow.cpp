@@ -4,6 +4,14 @@
 
 static const QString kSock = "/tmp/dcu.demo.sock";
 
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QDebug>
+
+static inline QString asJsonCompact(const QJsonObject& o) {
+    return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+}
+
 DataCheckWindow::DataCheckWindow(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::DataCheckWindow)
@@ -37,7 +45,11 @@ void DataCheckWindow::beginWithAuth(const QJsonObject& authPayload) {
     m_dataPayload = QJsonObject{};
     m_dataReqId.clear();
     m_powerReqId.clear();
-    m_authPayload = authPayload;       
+    m_authPayload = authPayload;
+
+    // === 로깅: Auth에서 넘어온 payload ===
+    qInfo().noquote() << "[DATACHECK] beginWithAuth: authPayload=" << asJsonCompact(m_authPayload);
+
 
     setMessage(QStringLiteral("데이터가 있는지 확인합니다..."), true);
     ui->progressLine->setRange(0, 0);
@@ -110,6 +122,13 @@ void DataCheckWindow::advance() {
 }
 
 void DataCheckWindow::onIpcMessage(const IpcMessage& msg) {
+
+
+    qInfo().noquote() << "[DATACHECK] recv <- topic=" << msg.topic
+                      << " reqId=" << msg.reqId
+                      << " payload=" << asJsonCompact(msg.payload);
+
+
     if (msg.topic == "data/result") {
         if (!m_dataReqId.isEmpty() && msg.reqId == m_dataReqId) {
             if (m_waitTimer.isActive()) m_waitTimer.stop();

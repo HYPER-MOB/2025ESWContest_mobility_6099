@@ -3,6 +3,15 @@
 
 static const QString kSock = "/tmp/dcu.demo.sock";
 
+
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QDebug>
+
+static inline QString asJsonCompact(const QJsonObject& o) {
+    return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+}
+
 AuthWindow::AuthWindow(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::AuthWindow)
@@ -37,7 +46,14 @@ void AuthWindow::begin() {
         {"reason", "face-recognition"},
         {"detail", "start"}
     };
+
+
+    qInfo().noquote() << "[AUTH] send -> topic=auth/result payload=" << asJsonCompact(payload);
+
     m_reqId = m_ipc->send("auth/result", payload);
+
+
+    qInfo().noquote() << "[AUTH] reqId=" << m_reqId;
 
     m_waitTimer.start(6000);
 }
@@ -63,33 +79,53 @@ void AuthWindow::advance() {
 }
 
 void AuthWindow::onIpcMessage(const IpcMessage& msg) {
-    if (msg.topic != "auth/result") return;
-    if (!m_reqId.isEmpty() && msg.reqId != m_reqId) return;
+    qInfo().noquote() << "[AUTH] recv <- topic=" << msg.topic
+                      << " reqId=" << msg.reqId
+                      << " payload=" << asJsonCompact(msg.payload);
 
-    if (m_waitTimer.isActive()) m_waitTimer.stop();
 
-    const QJsonObject& p = msg.payload;
-    int err = p.value("error").toInt(-999);
-    if (err == 0) {
-        m_phase = Phase::SuccessNotice;
-        setMessage(QStringLiteral("인증되었습니다."), false);
-        ui->progressLine->setRange(0, 100);
-        ui->progressLine->setValue(100);
+    if (msg.topic == "auth/result") {
+        if (!m_reqId.isEmpty() && msg.reqId != m_reqId) {
+            qInfo() << "[AUTH] reqId mismatch. ignore.";
+            return;
+        }
 
-        QTimer::singleShot(2000, this, [this, p] {
-            m_phase = Phase::Done;
-            emit authFinished(p);  
+        if (m_waitTimer.isActive()) m_waitTimer.stop();
+
+        const QJsonObject& p = msg.payload;
+        int err = p.value("error").toInt(-999);
+
+        if (err == 0) {
+            m_phase = Phase::SuccessNotice;
+            setMessage(QStringLiteral("인증되었습니다."), false);
+            ui->progressLine->setRange(0, 100);
+            ui->progressLine->setValue(100);
+
+            QTimer::singleShot(2000, this, [this, p] {
+                m_phase = Phase::Done;
+                emit authFinished(p);
             });
+        } else {
+            m_phase = Phase::RetryNotice;
+            setMessage(QStringLiteral("재시도하겠습니다."), false);
+            ui->progressLine->setRange(0, 100);
+            ui->progressLine->setValue(0);
+            m_timer.start(2000);
+        }
+        return;
     }
-    else {
-        m_phase = Phase::RetryNotice;
-        setMessage(QStringLiteral("재시도하겠습니다."), false);
-        ui->progressLine->setRange(0, 100);
-        ui->progressLine->setValue(0);
-        m_timer.start(2000);
+
+    if (msg.topic == "auth/process") {
+        QString text = msg.payload.value("message").toString();
+        if (!text.isEmpty()) {
+            qInfo().noquote() << "[AUTH] process message=" << text;
+            setMessage(text, true);
+        } else {
+            qInfo() << "[AUTH] process message: empty";
+        }
+        return;
     }
 }
-
 
 void AuthWindow::onWaitTimeout() {
     m_phase = Phase::RetryNotice;
