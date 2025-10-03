@@ -46,6 +46,8 @@ private:
     void initButtonAsToggle(QAbstractButton* btn);
     void highlightChecked(QButtonGroup* group);
 
+    QJsonObject buildApplyPayload(const QJsonObject& extra = {}) const;
+
 private:
     Ui::MainView *ui = nullptr;
     QTimer* m_clockTimer = nullptr;

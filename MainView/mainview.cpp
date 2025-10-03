@@ -579,15 +579,53 @@ void MainView::syncDashboard()
                 .arg(m_sideMirrorRightPitch));
 }
 
+QJsonObject MainView::buildApplyPayload(const QJsonObject& extra) const
+{
+    QJsonObject data{
+        // Seat
+        {"seatPosition",    m_seatPosition},
+        {"seatAngle",       m_seatAngle},
+        {"seatFrontHeight", m_seatFrontHeight},
+        {"seatRearHeight",  m_seatRearHeight},
+
+        // Side Mirror
+        {"sideMirrorLeftYaw",    m_sideMirrorLeftYaw},
+        {"sideMirrorLeftPitch",  m_sideMirrorLeftPitch},
+        {"sideMirrorRightYaw",   m_sideMirrorRightYaw},
+        {"sideMirrorRightPitch", m_sideMirrorRightPitch},
+
+        // Room Mirror
+        {"roomMirrorYaw",   m_roomMirrorYaw},
+        {"roomMirrorPitch", m_roomMirrorPitch},
+
+        // Handle
+        {"handlePosition",  m_handlePosition},
+        {"handleAngle",     m_handleAngle}
+    };
+
+    // 필요하면 호출처에서 추가 필드 덮어쓰기 가능
+    for (auto it = extra.begin(); it != extra.end(); ++it)
+        data.insert(it.key(), it.value());
+
+    data.insert("ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    data.insert("source", "ui");  // 트레이싱용 태그(옵션)
+    return data;
+}
+
 
 // ===== IPC =====
 
-void MainView::sendApply(const QJsonObject& changes)
+void MainView::sendApply(const QJsonObject& /*changes*/)
 {
     if (m_initializing) return;
-    QJsonObject payload = changes;
-    payload.insert("ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+
+    QJsonObject payload = buildApplyPayload();
+
     m_powerReqId = m_ipc->send("power/apply", payload);
+
+    // compact JSON으로 로그 남기기
+    const QByteArray compact = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+    qInfo() << "[power/apply] sent reqId=" << m_powerReqId << compact;
 }
 
 void MainView::onIpcMessage(const IpcMessage& msg)
