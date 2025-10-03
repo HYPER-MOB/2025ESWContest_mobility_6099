@@ -95,6 +95,14 @@ static void sendPowerApplyAck(IpcConnection* c, bool ok, const QString& reqId = 
     c->send({ "power/apply/ack", reqId, QJsonObject{{"ok", ok}} });
 }
 
+static void sendAuthProcess(IpcConnection* c, const QString& text, const QString& reqId = {}) {
+    if (!c) return;
+    c->send({ "auth/process", reqId, QJsonObject{
+        {"message", text},
+        {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)}
+    }});
+}
+
 //
 /*
 
@@ -161,19 +169,32 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    server.addHandler("auth/result", [](const IpcMessage& m, IpcConnection* c) {
-         QTimer::singleShot(2000, c, [m, c] {
-             sendAuthResult(c, "u123", 0.93, 0, m.reqId);
-             qInfo() << "[auth/result] reply sent after delay";
-         });
-         /*
-         DCU_USER_FACE_REQ메시지를 CAN에 보내야함
-         
-         */
+server.addHandler("auth/result", [](const IpcMessage& m, IpcConnection* c) {
+
+    QTimer::singleShot(0, c, [m, c] {
+        sendAuthProcess(c, QStringLiteral("블루투스 연결 확인 중..."), m.reqId);
+        qInfo() << "[auth/process] bluetooth step sent";
+    });
 
 
+    QTimer::singleShot(3000, c, [m, c] {
+        sendAuthProcess(c, QStringLiteral("NFC 인증 준비 중..."), m.reqId);
+        qInfo() << "[auth/process] nfc step sent";
+    });
 
-        });
+
+    QTimer::singleShot(6000, c, [m, c] {
+        sendAuthResult(c, "u123", 0.93, 0, m.reqId);
+        qInfo() << "[auth/result] final reply sent after staged process";
+    });
+
+    /*
+      TODO:
+      - 여기에서 실제로는 DCU_USER_FACE_REQ 를 CAN으로 송신해
+        Bluetooth/NFC 과정을 트리거하고,
+        중간 상태를 수신할 때마다 auth/process 로 흘려보내면 됩니다.
+    */
+});
 
     server.addHandler("data/result", [](const IpcMessage& m, IpcConnection* c) {
         QTimer::singleShot(1200, c, [=] {
