@@ -22,7 +22,7 @@
   <property name="styleSheet">
    <string notr="true">
 QWidget#AuthWindow, QWidget#DataCheckWindow {
-  background: #EDEDED;
+  background: #FFFFFF;
   font-family: &quot;Noto Sans&quot;, &quot;Malgun Gothic&quot;;
   font-size: 14px;
 }
@@ -59,7 +59,7 @@ QProgressBar::chunk {
 }
 
 #loadingIcon {
-  background: transparent;
+  background: #FFFFFF;
   margin-bottom: 12px;
 }
 </string>

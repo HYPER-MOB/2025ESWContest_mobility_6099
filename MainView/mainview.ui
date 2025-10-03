@@ -65,7 +65,7 @@
 
     QLabel#lblSeatPic, QLabel#lblSideMirrorPic,
     QLabel#lblHandlePic, QLabel#lblRoomMirrorPic {
-      background: transparent;
+      background: #FFFFFF;
     }
 
     #headerBar {
