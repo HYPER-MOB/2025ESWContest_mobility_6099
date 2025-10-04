@@ -120,24 +120,24 @@ can_err_t   can_recv(const char* name, CanFrame* out, uint32_t timeout_ms) {
     return channel_read(ch, out, timeout_ms);  
 }
 
-int         can_register_job(const char* name, const CanFrame* frame, uint32_t period_ms) {
+can_err_t   can_register_job(const char* name, int* jobId, const CanFrame* frame, uint32_t period_ms) {
     if(!g_state.initialized) return CAN_ERR_STATE;
     if(!name || name[0] == '\0') return CAN_ERR_INVALID;
 
     Channel* ch = find_by_name(name);
     if(!ch) return CAN_ERR_INVALID;
 
-    return channel_register_job(ch, frame, period_ms);
+    return channel_register_job(ch, jobId, frame, period_ms);
 }
 
-int         can_register_job_ex(const char* name, const CanFrame* frame, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user) {
+can_err_t   can_register_job_ex(const char* name, int* jobId, const CanFrame* frame, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user) {
     if(!g_state.initialized) return CAN_ERR_STATE;
     if(!name || name[0] == '\0') return CAN_ERR_INVALID;
 
     Channel* ch = find_by_name(name);
     if(!ch) return CAN_ERR_INVALID;
 
-    return channel_register_job_ex(ch, frame, period_ms, prep, prep_user);
+    return channel_register_job_ex(ch, jobId, frame, period_ms, prep, prep_user);
 }
 
 can_err_t   can_cancel_job(const char* name, int jobId) {
@@ -150,14 +150,14 @@ can_err_t   can_cancel_job(const char* name, int jobId) {
     return channel_cancel_job(ch, jobId);
 }
 
-int         can_subscribe(const char* name, CanFilter filter, can_callback_t callback, void* user) {
+can_err_t   can_subscribe(const char* name, int* subId, CanFilter filter, can_callback_t callback, void* user) {
     if(!g_state.initialized) return CAN_ERR_STATE;
     if(!name || name[0] == '\0') return CAN_ERR_INVALID;
 
     Channel* ch = find_by_name(name);
     if(!ch) return CAN_ERR_INVALID;
 
-    return channel_subscribe(ch, &filter, callback, user);
+    return channel_subscribe(ch, subId, &filter, callback, user);
 }
 
 can_err_t   can_unsubscribe(const char* name, int subId) {
