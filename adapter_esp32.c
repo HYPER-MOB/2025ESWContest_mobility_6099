@@ -266,16 +266,14 @@ static void v_destroy(Adapter* self){
     free(self);
 }
 
-static int v_ch_register_job_ex(Adapter* self, AdapterHandle h,
-                                const CanFrame* initial, uint32_t period_ms,
-                                can_tx_prepare_cb_t prep, void* prep_user)
+static can_err_t v_ch_register_job_ex(Adapter* self, int* id, AdapterHandle h, const CanFrame* initial, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user)
 {
     (void)self;
-    if (!h || !initial || period_ms==0) return -1;
+    if (!h || !initial || period_ms==0) return CAN_ERR_INVALID;
     Esp32Ch* ch = (Esp32Ch*)h;
 
     Job* j = (Job*)calloc(1, sizeof(Job));
-    if (!j) return -1;
+    if (!j) return CAN_ERR_INVALID;
 
     j->fr = *initial;
     j->period_ms = period_ms;
@@ -289,11 +287,13 @@ static int v_ch_register_job_ex(Adapter* self, AdapterHandle h,
     ch->jobs = j;
     xSemaphoreGive(ch->mtx);
 
-    return j->id;
+    id = j->id;
+
+    return CAN_OK;
 }
 
-static int v_ch_register_job(Adapter* self, AdapterHandle h, const CanFrame* fr, uint32_t period_ms){
-    return v_ch_register_job_ex(self, h, fr, period_ms, /*prep=*/NULL, /*prep_user=*/NULL);
+static can_err_t v_ch_register_job(Adapter* self, int* id, AdapterHandle h, const CanFrame* fr, uint32_t period_ms){
+    return v_ch_register_job_ex(self, id, h, fr, period_ms, /*prep=*/NULL, /*prep_user=*/NULL);
 }
 
 static can_err_t v_ch_cancel_job(Adapter* self, AdapterHandle h, int jobId){
@@ -322,18 +322,18 @@ Adapter* adapter_esp32_new(void){
     if (!priv){ free(ad); return NULL; }
 
     static const AdapterVTable V = {
-        .probe            = v_probe,
-        .ch_open          = v_ch_open,
-        .ch_close         = v_ch_close,
-        .ch_set_callbacks = v_ch_set_callbacks,
-        .write            = v_write,
-        .read             = v_read,
-        .status           = v_status,
-        .recover          = v_recover,
-        .ch_register_job  = v_ch_register_job,   // ★ 추가
+        .probe              = v_probe,
+        .ch_open            = v_ch_open,
+        .ch_close           = v_ch_close,
+        .ch_set_callbacks   = v_ch_set_callbacks,
+        .write              = v_write,
+        .read               = v_read,
+        .status             = v_status,
+        .recover            = v_recover,
+        .ch_register_job    = v_ch_register_job,   // ★ 추가
         .ch_register_job_ex = v_ch_register_job_ex,
-        .ch_cancel_job    = v_ch_cancel_job,     // ★ 추가
-        .destroy          = v_destroy
+        .ch_cancel_job      = v_ch_cancel_job,     // ★ 추가
+        .destroy            = v_destroy
     };
     ad->v = &V; ad->priv = priv;
     return ad;
