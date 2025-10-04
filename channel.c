@@ -198,7 +198,7 @@ can_err_t       channel_subscribe(Channel* ch, int* subId, const CanFilter* filt
     s->next = ch->subs;
     ch->subs = s;
 
-    subId = s->id;
+    *subId = s->id;
 
     return CAN_OK;
 }
