@@ -447,16 +447,14 @@ static can_err_t v_recover(Adapter* self, AdapterHandle h){
 }
 
 /* ====== Job 등록/취소/확장 ====== */
-static int v_ch_register_job_ex(Adapter* self, AdapterHandle h,
-                                const CanFrame* initial, uint32_t period_ms,
-                                can_tx_prepare_cb_t prep, void* prep_user)
+static can_err_t v_ch_register_job_ex(Adapter* self, int* id, AdapterHandle h, const CanFrame* initial, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user)
 {
     (void)self;
-    if (!h || !initial || period_ms==0) return -1;
+    if (!h || !initial || period_ms==0) return CAN_ERR_INVALID;
     LinuxCh* ch = (LinuxCh*)h;
 
     Job* j = (Job*)calloc(1, sizeof(Job));
-    if (!j) return -1;
+    if (!j) return CAN_ERR_INVALID;
     j->fr = *initial;
     j->period_ms = period_ms;
     j->next_due_ms = 0;
@@ -469,13 +467,14 @@ static int v_ch_register_job_ex(Adapter* self, AdapterHandle h,
     ch->jobs = j;
     pthread_mutex_unlock(&ch->mtx);
 
-    return j->id;
+    id = j->id;
+    
+    return CAN_OK;
 }
 
-static int v_ch_register_job(Adapter* self, AdapterHandle h,
-                             const CanFrame* fr, uint32_t period_ms)
+static can_err_t v_ch_register_job(Adapter* self, int* id, AdapterHandle h, const CanFrame* fr, uint32_t period_ms)
 {
-    return v_ch_register_job_ex(self, h, fr, period_ms, NULL, NULL);
+    return v_ch_register_job_ex(self, id, h, fr, period_ms, NULL, NULL);
 }
 
 static can_err_t v_ch_cancel_job(Adapter* self, AdapterHandle h, int jobId){
