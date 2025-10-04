@@ -129,7 +129,10 @@ typedef enum {
     PCAN_ID_TCU_DCU_USER_PROFILE_MIRROR    = 0x052,
     PCAN_ID_TCU_DCU_USER_PROFILE_WHEEL     = 0x053,
     PCAN_ID_DCU_TCU_USER_PROFILE_ACK       = 0x055,
+    // ...
+} can_msg_pcan_id_t;
 
+typedef enum {
     BCAN_ID_DCU_SEAT_ORDER                  = 0x001,
     BCAN_ID_DCU_MIRROR_ORDER                = 0x002,
     BCAN_ID_DCU_WHEEL_ORDER                 = 0x003,
@@ -137,7 +140,10 @@ typedef enum {
     BCAN_ID_POW_MIRROR_STATE                = 0x200,
     BCAN_ID_POW_WHEEL_STATE                 = 0x300
     // ...
-} can_msg_id_t;
+} can_msg_bcan_id_t;
 
-CanFrame        can_encode(can_msg_id_t id, const CanMessage* msg, uint8_t dlc);
-can_msg_id_t    can_decode(const CanFrame* fr, CanMessage* out);
+
+CanFrame        can_encode_pcan(can_msg_pcan_id_t id, const CanMessage* msg, uint8_t dlc);
+CanFrame        can_encode_bcan(can_msg_bcan_id_t id, const CanMessage* msg, uint8_t dlc);
+can_err_t       can_decode_pcan(const CanFrame* fr, can_msg_pcan_id_t* id, CanMessage* payload);
+can_err_t       can_decode_bcan(const CanFrame* fr, can_msg_bcan_id_t* id, CanMessage* payload);
