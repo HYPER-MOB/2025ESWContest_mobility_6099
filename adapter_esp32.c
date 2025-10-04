@@ -287,7 +287,7 @@ static can_err_t v_ch_register_job_ex(Adapter* self, int* id, AdapterHandle h, c
     ch->jobs = j;
     xSemaphoreGive(ch->mtx);
 
-    id = j->id;
+    *id = j->id;
 
     return CAN_OK;
 }
@@ -338,3 +338,5 @@ Adapter* adapter_esp32_new(void){
     ad->v = &V; ad->priv = priv;
     return ad;
 }
+
+Adapter* adapter_linux_new(void) { return NULL; }
