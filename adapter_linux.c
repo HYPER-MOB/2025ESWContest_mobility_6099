@@ -177,7 +177,7 @@ static int bringup_can_iface(const char* ifname, const CanConfig* cfg){
     int listen_only = (cfg->mode == CAN_MODE_SILENT);
     int r = fallback_bringup_with_ip(ifname, cfg->bitrate, listen_only);
     if (r != 0) {
-        fprintf(stderr, "fallback ip(%%s) bring-up failed. Need root/CAP_NET_ADMIN?\n", ifname);
+        fprintf(stderr, "fallback ip(%s) bring-up failed. Need root/CAP_NET_ADMIN?\n", ifname);
         return -EPERM;
     }
     return 0;
@@ -467,7 +467,7 @@ static can_err_t v_ch_register_job_ex(Adapter* self, int* id, AdapterHandle h, c
     ch->jobs = j;
     pthread_mutex_unlock(&ch->mtx);
 
-    id = j->id;
+    *id = j->id;
     
     return CAN_OK;
 }
@@ -526,3 +526,5 @@ Adapter* adapter_linux_new(void){
     ad->v = &V; ad->priv = priv;
     return ad;
 }
+
+Adapter* adapter_esp32_new(void) { return NULL; }
