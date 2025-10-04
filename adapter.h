@@ -28,9 +28,9 @@ typedef struct AdapterVTable {
     can_bus_state_t (*status)(Adapter* self, AdapterHandle handle);
     can_err_t       (*recover)(Adapter* self, AdapterHandle handle);
 
-    int         (*ch_register_job)      (Adapter* self, AdapterHandle h, const CanFrame* fr, uint32_t period_ms);
+    can_err_t   (*ch_register_job)      (Adapter* self, int* id, AdapterHandle h, const CanFrame* fr, uint32_t period_ms);
     can_err_t   (*ch_cancel_job)        (Adapter* self, AdapterHandle h, int jobId);
-    int         (*ch_register_job_ex)   (Adapter* self, AdapterHandle h, const CanFrame* initial, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user);
+    can_err_t   (*ch_register_job_ex)   (Adapter* self, int* id, AdapterHandle h, const CanFrame* initial, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user);
 
     // 어댑터 자체 파기
     void (*destroy)(Adapter* self);
