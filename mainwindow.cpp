@@ -14,6 +14,8 @@
 #include <QLabel>
 #include <QMetaObject>
 
+#include <QScreen>
+
 static const QString kSock = "/tmp/dcu.demo.sock";
 
 MainWindow::MainWindow(QWidget *parent)
@@ -22,6 +24,11 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    QRect screenGeometry = QGuiApplication::primaryScreen()->geometry();
+    int screenWidth  = screenGeometry.width();
+    int screenHeight = screenGeometry.height();
+
+    resize(screenWidth, screenHeight);
     if (menuBar()) menuBar()->hide();
     if (statusBar()) statusBar()->hide();
     setWindowFlags(Qt::FramelessWindowHint | Qt::Window);
@@ -36,7 +43,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_introLabel->setObjectName("introLabel");
     m_introLabel->setAlignment(Qt::AlignCenter);
     m_introLabel->setStyleSheet("color:#000000; font-size:42px; font-weight:800;");
-    m_introLabel->setGeometry(0, 0, 1024, 600);
+    m_introLabel->setGeometry(0, 0, screenWidth, screenHeight);
+
 
     // 페이지들 생성
     m_auth = new AuthWindow(this);
@@ -78,6 +86,10 @@ MainWindow::MainWindow(QWidget *parent)
         {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)}
     };
     m_ipc->send("system/hello", hello);
+
+
+
+
 }
 
 MainWindow::~MainWindow()
