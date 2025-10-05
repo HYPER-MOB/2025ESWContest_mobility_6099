@@ -1,0 +1,19 @@
+﻿# ===== ESP-IDF / VS Code =====
+build/
+.embuild/
+.vscode/
+.idea/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake-install.cmake
+install_manifest.txt
+compile_commands.json
+__pycache__/
+*.pyc
+.DS_Store
+
+# sdkconfig 관리 전략:
+# - 재현성을 원하면 sdkconfig를 커밋한다.
+# - 개인 환경 차이 크면 sdkconfig를 무시하고 sdkconfig.defaults만 관리한다.
+sdkconfig.old
