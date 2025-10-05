@@ -22,7 +22,6 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    setFixedSize(1024, 600);
     if (menuBar()) menuBar()->hide();
     if (statusBar()) statusBar()->hide();
     setWindowFlags(Qt::FramelessWindowHint | Qt::Window);
