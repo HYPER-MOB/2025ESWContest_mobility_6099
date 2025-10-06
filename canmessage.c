@@ -23,7 +23,7 @@ can_err_t can_decode_pcan(const CanFrame* fr, can_msg_pcan_id_t* id, CanMessage*
     if (!fr || !payload) return CAN_ERR_INVALID;
     memset(payload, 0, sizeof(*payload));
     memcpy(payload->raw, fr->data, fr->dlc);
-    id = fr->id;
+    *id = fr->id;
     return CAN_OK;
 }
 
@@ -31,6 +31,6 @@ can_err_t can_decode_bcan(const CanFrame* fr, can_msg_bcan_id_t* id, CanMessage*
     if (!fr || !payload) return CAN_ERR_INVALID;
     memset(payload, 0, sizeof(*payload));
     memcpy(payload->raw, fr->data, fr->dlc);
-    id = fr->id;
+    *id = fr->id;
     return CAN_OK;
 }
