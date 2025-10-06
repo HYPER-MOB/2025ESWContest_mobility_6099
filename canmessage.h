@@ -23,6 +23,10 @@ typedef union {
     } tcu_sca_user_info_nfc;
 
     struct {
+        uint64_t sig_user_ble;
+    } tcu_sca_user_info_ble;
+
+    struct {
         uint8_t sig_ack_index;
         uint8_t sig_ack_state;
     } sca_tcu_user_info_ack;
@@ -65,6 +69,32 @@ typedef union {
         uint8_t sig_ack_index;
         uint8_t sig_ack_state;
     } dcu_tcu_user_profile_ack;
+
+    struct {
+        uint8_t sig_seat_position;      
+        uint8_t sig_seat_angle; 
+        uint8_t sig_seat_front_height;  
+        uint8_t sig_seat_rear_height;    
+    } dcu_tcu_user_profile_seat_update;
+
+    struct {
+        uint8_t sig_mirror_left_yaw;  
+        uint8_t sig_mirror_left_pitch;     
+        uint8_t sig_mirror_right_yaw; 
+        uint8_t sig_mirror_right_pitch;    
+        uint8_t sig_mirror_room_yaw;    
+        uint8_t sig_mirror_room_pitch; 
+    } dcu_tcu_user_profile_mirror_update;
+    
+    struct {
+        uint8_t sig_wheel_position;      
+        uint8_t sig_wheel_angle;  
+    } dcu_tcu_user_profile_wheel_update;
+
+    struct {
+        uint8_t sig_ack_index;
+        uint8_t sig_ack_state;
+    } tcu_dcu_user_profile_update_ack;
 
     struct {
         uint8_t sig_seat_position;      
@@ -116,19 +146,25 @@ typedef union {
 
 // ID enum (DBC에 맞춰서)
 typedef enum {
-    PCAN_ID_DCU_SCA_USER_FACE_REQ          = 0x001,
-    PCAN_ID_SCA_TCU_USER_INFO_REQ          = 0x002,
-    PCAN_ID_SCA_DCU_AUTH_STATE             = 0x003,
-    PCAN_ID_TCU_SCA_USER_INFO              = 0x004,
-    PCAN_ID_TCU_SCA_USER_INFO_NFC          = 0x007,
-    PCAN_ID_SCA_TCU_USER_INFO_ACK          = 0x014,
-    PCAN_ID_SCA_DCU_AUTH_RESULT            = 0x005,
-    PCAN_ID_SCA_DCU_AUTH_RESULT_ADD        = 0x006,
-    PCAN_ID_DCU_TCU_USER_PROFILE_REQ       = 0x011,
-    PCAN_ID_TCU_DCU_USER_PROFILE_SEAT      = 0x051,
-    PCAN_ID_TCU_DCU_USER_PROFILE_MIRROR    = 0x052,
-    PCAN_ID_TCU_DCU_USER_PROFILE_WHEEL     = 0x053,
-    PCAN_ID_DCU_TCU_USER_PROFILE_ACK       = 0x055,
+    PCAN_ID_DCU_SCA_USER_FACE_REQ               = 0x001,
+    PCAN_ID_SCA_TCU_USER_INFO_REQ               = 0x002,
+    PCAN_ID_SCA_DCU_AUTH_STATE                  = 0x003,
+    PCAN_ID_TCU_SCA_USER_INFO                   = 0x004,
+    
+    PCAN_ID_TCU_SCA_USER_INFO_NFC               = 0x007,
+    PCAN_ID_TCU_SCA_USER_INFO_BLE               = 0x008,
+    PCAN_ID_SCA_TCU_USER_INFO_ACK               = 0x014,
+    PCAN_ID_SCA_DCU_AUTH_RESULT                 = 0x005,
+    PCAN_ID_SCA_DCU_AUTH_RESULT_ADD             = 0x006,
+    PCAN_ID_DCU_TCU_USER_PROFILE_REQ            = 0x011,
+    PCAN_ID_TCU_DCU_USER_PROFILE_SEAT           = 0x051,
+    PCAN_ID_TCU_DCU_USER_PROFILE_MIRROR         = 0x052,
+    PCAN_ID_TCU_DCU_USER_PROFILE_WHEEL          = 0x053,
+    PCAN_ID_DCU_TCU_USER_PROFILE_ACK            = 0x055,
+    PCAN_ID_DCU_TCU_USER_PROFILE_SEAT_UPDATE    = 0x061,
+    PCAN_ID_DCU_TCU_USER_PROFILE_MIRROR_UPDATE  = 0x062,
+    PCAN_ID_DCU_TCU_USER_PROFILE_WHEEL_UPDATE   = 0x063,
+    PCAN_ID_TCU_DCU_USER_PROFILE_UPDATE_ACK     = 0x065
     // ...
 } can_msg_pcan_id_t;
 
