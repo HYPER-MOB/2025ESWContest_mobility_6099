@@ -50,6 +50,25 @@ void on_rx_range(const CanFrame* fr, void* user) {
     printf("[RX] range id=0x%03X dlc=%d\n", fr->id, fr->dlc);
 }
 
+// 콜백을 사용하는 방식 예제.
+// 콜백 등록 시점에서 해당 frame의 id가 BCAN_ID_DCU_SEAT_ORDER로 고정되지만 이렇게 사용하는 것이 안전.
+// 여러 개의 id가 대상일 경우 switch case도 적절.
+void on_rx_order(const CanFrame* f, void* user){
+    (void)user;
+    can_msg_bcan_id_t id;
+    CanMessage msg = {0};
+    if(can_decode_bcan(f, &id, &msg) == CAN_OK) {
+        if(id == BCAN_ID_DCU_SEAT_ORDER) {
+            printf("id=0x%03X seat pos=%d seat angle = %d seat front pos = %d seat rear pos = %d\n", 
+                id, msg.dcu_seat_order.sig_seat_position, msg.dcu_seat_order.sig_seat_angle, msg.dcu_seat_order.sig_seat_front_height, msg.dcu_seat_order.sig_seat_rear_height);
+            if(msg.dcu_seat_order.sig_seat_position > 0)        loadOn(0); else loadOff(0);
+            if(msg.dcu_seat_order.sig_seat_angle > 0)           loadOn(1); else loadOff(1);
+            if(msg.dcu_seat_order.sig_seat_front_height > 0)    loadOn(2); else loadOff(2);
+            if(msg.dcu_seat_order.sig_seat_rear_height > 0)     loadOn(3); else loadOff(3);
+        }   
+    }
+}
+
 can_init(CAN_DEVICE_LINUX); // 또는 CAN_DEVICE_ESP32
 
 CanConfig cfg = {
@@ -66,7 +85,7 @@ CanFrame fr = {.id=0x123, .dlc=3, .data={0x11,0x22,0x33}};
 if(can_send("can0", fr, 1000) == CAN_OK) {}                       // 단일 메시지 쓰기 (timeout은 ms단위)
 
 CanFrame fr = {0};
-if(can_recv("can0", &fr, 1000) == CAN_OK) {}                      // 단일 메시지 읽어오기 (timeout 시 CAN_ERR_TIMEOUT)
+if(can_recv("can0", &fr, 1000) == CAN_OK) {}                      // 단일 메시지 읽어오기 (timeout 시 CAN_ERR_TIMEOUT) 되긴 하는데 가능한 한 콜백 씁시다.
 
 int subID_range     = 0;
 CanFilter f_any     = {.type = CAN_FILTER_MASK,   .data.mask={.id=0, .mask=0}};                   // 모든 메시지를 통과하는 필터
@@ -76,9 +95,16 @@ int subID_single    = 0;
 CanFilter f_single  = {.type = CAN_FILTER_MASK,   .data.mask = { .id = 0x001, .mask = 0x7FF }};   // 정확히 0x001만 허용
 if(can_subscribe("can0", &subID_single, f_single, on_rx_single, NULL) == CAN_OK) {}               // 단일 메시지에 대해서 콜백 등록
 
+int subID_order    = 0;
+CanFilter f_single  = {.type = CAN_FILTER_RANGE,   .data.mask = { .min = BCAN_ID_DCU_SEAT_ORDER, .max = BCAN_ID_DCU_WHEEL_ORDER }}; // 1 ~ 3으로 정의해놔서 이런식으로도 가능
+if(can_subscribe("can0", &subID_single, f_single, on_rx_single, NULL) == CAN_OK) {}               // 단일 메시지에 대해서 콜백 등록
+
 int subID_any       = 0;
 CanFilter f_range   = {.type = CAN_FILTER_RANGE,  .data.range = { .min = 0x001, .max = 0x004 }};  // 0x001 ~ 0x004 허용
 if(can_subscribe("can0", &subID_range, f_range, on_rx_range, NULL) == CAN_OK) {}                  // 범위 메시지에 대해서 콜백 등록
+
+CanFilter f_list    = {.type = CAN_FILTER_LIST,   .data.list = { .list = (uint32_t[]){ 0x001, 0x005, 0x123, 0x321 }, .count = 4 }};
+// 리스트 방식은 생성 시점에 대상 배열을 복사 저장하고 해제할 때도 free를 사용하므로 이렇게 사용할 수 있다
 
 int jobID = 0;
 CanFrame fr = {.id=0x123, .dlc=3, .data={0x11,0x22,0x33}};
@@ -91,15 +117,18 @@ CanMessage msg = {0};
 msg.dcu_wheel_order = {.sig_wheel_position = 10, .sig_wheel_angle = 20};
 CanFrame frame = can_encode_bcan(BCAN_ID_DCU_SEAT_ORDER, &msg, 2);                                 // CanMessage를 이용해 frame build
 
-can_msg_pcan_id_t id;
+can_msg_bcan_id_t id;
 CanMessage msg = {0};
 CanFrame frame = {0};
 can_recv("can0", &frame, 1000);                                 // 혹은 다른 방식으로 frame을 받아왔을 때
 if(can_decode_bcan(frame, &id, &msg) == CAN_OK) {
   if(id == BCAN_ID_DCU_WHEEL_ORDER) {
-    printf("id=0x%03X wheel pos=%d wheel angle = %d\n", msg.dcu_wheel_order.sig_wheel_position, msg.dcu_wheel_order.sig_wheel_angle);
+    printf("id=0x%03X wheel pos=%d wheel angle = %d\n", id, msg.dcu_wheel_order.sig_wheel_position, msg.dcu_wheel_order.sig_wheel_angle);
   }
 }
+
+// 프로그램 종료 시
+// 라즈베리파이나 젯슨 나노와 같은 Linux의 경우 프로그램 종료가 보드 전원 종료가 아니기 때문에 반드시 할당된 자원을 해제해 주어야 합니다.
 
 if(can_unsubscribe("can0", subID_any) == CAN_OK) {}             // 모든 메시지 콜백 등록 해제
 if(can_unsubscribe("can0", subID_single) == CAN_OK) {}          // 단일 메시지 콜백 등록 해제
@@ -119,7 +148,7 @@ can_dispose();
 
 ### 1. Raspberry Pi (MCP2515 + TJA1050)
 
-- `/boot/config.txt` 수정:
+- `/boot/config.txt` 혹은 `/boot/firmware/config.txt` 수정:
   ```ini
   dtparam=spi=on
   dtoverlay=mcp2515-can0,oscillator=8000000,interrupt=25
@@ -129,7 +158,7 @@ can_dispose();
   dmesg | grep mcp2515
   ip link show
   ```
-- 이후에는 `adapter_linux` 가 자동으로 bring-up 처리.
+- 이후에는 드라이버 사용시 `adapter_linux` 가 자동으로 bring-up 처리.
 
 ---
 
