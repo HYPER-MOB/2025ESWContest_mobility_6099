@@ -308,7 +308,7 @@ if (fr->id == ID_SCA_DCU_AUTH_RESULT_ADD && fr->dlc >= 8) {
   if (g_conn && g_profSeatOK && g_profMirrorOK && g_profWheelOK) {
     QMetaObject::invokeMethod(
         g_conn,
-        [conn = g_conn](){ sendDataResult(conn, 0); },
+        [conn = g_conn](){ sendDataResult(conn, 0, g_lastDataReqId); },
         Qt::QueuedConnection
     );
 }
@@ -328,7 +328,7 @@ if (fr->id == ID_SCA_DCU_AUTH_RESULT_ADD && fr->dlc >= 8) {
 if (g_conn && g_profSeatOK && g_profMirrorOK && g_profWheelOK) {
     QMetaObject::invokeMethod(
         g_conn,
-        [conn = g_conn](){ sendDataResult(conn, 0); },
+        [conn = g_conn](){ sendDataResult(conn, 0, g_lastDataReqId); },
         Qt::QueuedConnection
     );
 }
@@ -344,7 +344,7 @@ if (g_conn && g_profSeatOK && g_profMirrorOK && g_profWheelOK) {
  if (g_conn && g_profSeatOK && g_profMirrorOK && g_profWheelOK) {
     QMetaObject::invokeMethod(
         g_conn,
-        [conn = g_conn](){ sendDataResult(conn, 0); },
+        [conn = g_conn](){ sendDataResult(conn, 0, g_lastDataReqId); },
         Qt::QueuedConnection
     );
 }
@@ -415,16 +415,20 @@ int main(int argc, char** argv) {
 
 // UI가 "auth/result"를 보내면: (실제 의미: 인증 시작 트리거)
 server.addHandler("auth/result", [](const IpcMessage& m, IpcConnection* c) {
-    g_lastAuthReqId = m.reqId;                     // ★ 저장
+    g_lastAuthReqId = m.reqId;                     
     CAN_Tx_USER_FACE_REQ();
     sendAuthProcess(c, QStringLiteral("얼굴 인식 요청 전송 (CAN)..."), g_lastAuthReqId);
 });
 
 // UI가 "data/result"를 보내면: (프로필 요청 트리거)
 server.addHandler("data/result", [](const IpcMessage& m, IpcConnection* c) {
-    g_lastDataReqId = m.reqId;                     // ★ 저장
+    g_lastDataReqId = m.reqId;                     
     CAN_Tx_USER_PROFILE_REQ();
     sendAuthProcess(c, QStringLiteral("프로필 요청 전송 (CAN)..."), g_lastDataReqId);
+});
+
+server.addHandler("system/hello", [](const IpcMessage& m, IpcConnection* c){
+    sendSystemStart(c, m.reqId);
 });
 
 
