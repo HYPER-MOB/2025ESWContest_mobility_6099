@@ -193,6 +193,50 @@ static void CAN_Tx_USER_PROFILE_REQ() {
     can_send("can0", f, 0);
 }
 
+// ── CAN TX: Profile Update & ACK ─────────────────────────────
+static void CAN_Tx_USER_PROFILE_ACK(uint8_t index /*1:Seat,2:Mirror,3:Wheel*/, uint8_t state /*0:OK,1:Partial*/) {
+    CanFrame f = mkFrame(ID_DCU_TCU_USER_PROFILE_ACK, 2);
+    f.data[0] = index;
+    f.data[1] = state;
+    qInfo() << "[CAN TX] USER_PROFILE_ACK id=0x" << QString::number(f.id,16).toUpper()
+            << "dlc=" << f.dlc << "data=[" << bytesToHex(f.data, f.dlc) << "]";
+    can_send("can0", f, 0);
+}
+
+static void CAN_Tx_USER_PROFILE_SEAT_UPDATE() {
+    CanFrame f = mkFrame(ID_DCU_TCU_USER_PROFILE_SEAT_UPDATE, 4);
+    f.data[0] = encPercent100(m_seatPosition);
+    f.data[1] = (uint8_t)clampInt(m_seatAngle, 0, 180);
+    f.data[2] = encPercent100(m_seatFrontHeight);
+    f.data[3] = encPercent100(m_seatRearHeight);
+    qInfo() << "[CAN TX] PROFILE_SEAT_UPDATE id=0x" << QString::number(f.id,16).toUpper()
+            << "dlc=" << f.dlc << "data=[" << bytesToHex(f.data, f.dlc) << "]";
+    can_send("can0", f, 0);
+}
+
+static void CAN_Tx_USER_PROFILE_MIRROR_UPDATE() {
+    CanFrame f = mkFrame(ID_DCU_TCU_USER_PROFILE_MIRROR_UPDATE, 6);
+    f.data[0] = encAngle180_fromSigned(m_sideMirrorLeftYaw,   90);
+    f.data[1] = encAngle180_fromSigned(m_sideMirrorLeftPitch, 90);
+    f.data[2] = encAngle180_fromSigned(m_sideMirrorRightYaw,  90);
+    f.data[3] = encAngle180_fromSigned(m_sideMirrorRightPitch,90);
+    f.data[4] = encAngle180_fromSigned(m_roomMirrorYaw,       90);
+    f.data[5] = encAngle180_fromSigned(m_roomMirrorPitch,     90);
+    qInfo() << "[CAN TX] PROFILE_MIRROR_UPDATE id=0x" << QString::number(f.id,16).toUpper()
+            << "dlc=" << f.dlc << "data=[" << bytesToHex(f.data, f.dlc) << "]";
+    can_send("can0", f, 0);
+}
+
+static void CAN_Tx_USER_PROFILE_WHEEL_UPDATE() {
+    CanFrame f = mkFrame(ID_DCU_TCU_USER_PROFILE_WHEEL_UPDATE, 2);
+    f.data[0] = encPercent100(m_handlePosition);
+    f.data[1] = encAngle180_fromSigned(m_handleAngle, 90);
+    qInfo() << "[CAN TX] PROFILE_WHEEL_UPDATE id=0x" << QString::number(f.id,16).toUpper()
+            << "dlc=" << f.dlc << "data=[" << bytesToHex(f.data, f.dlc) << "]";
+    can_send("can0", f, 0);
+}
+
+
 // ── CAN RX ───────────────────────────────────────────────────────────
 static void onCanRx(const CanFrame* fr, void* /*user*/) {
     // 좌석 상태
@@ -265,19 +309,50 @@ static void onCanRx(const CanFrame* fr, void* /*user*/) {
 // 인증 결과 (기본)
 if (fr->id == ID_SCA_DCU_AUTH_RESULT && fr->dlc >= 1) {
     uint8_t flag = fr->data[0];
-    QByteArray user7((const char*)&fr->data[1], 7);
-    g_accUserId = user7;                          
 
-    if ((flag & 0x02) == 0x02) {
-    } else {
+    if (flag == 0x01) {
+        g_accUserId.clear();
         if (g_conn) {
-            const QString uid = QString::fromLatin1(g_accUserId);
             QMetaObject::invokeMethod(
-                g_conn, [conn=g_conn, uid]{
-                    sendAuthResult(conn, uid, 0.95, /*error=*/0, /*reqId=*/g_lastAuthReqId);
+                g_conn, []{
+                    // userId는 공란, score는 0, error=1
+                    sendAuthResult(g_conn, QString(), 0.0, /*error=*/1, /*reqId=*/g_lastAuthReqId);
                 }, Qt::QueuedConnection
             );
         }
+        return;
+    }
+
+
+
+    if (fr->dlc >= 8) {
+        QByteArray user7((const char*)&fr->data[1], 7);
+        g_accUserId = user7;
+    } else {
+        g_accUserId.clear();
+    }
+    if (g_conn) {
+        const QString uid = QString::fromLatin1(g_accUserId);
+        QMetaObject::invokeMethod(
+            g_conn, [uid]{
+                sendAuthResult(g_conn, uid, 0.95, /*error=*/0, /*reqId=*/g_lastAuthReqId);
+            }, Qt::QueuedConnection
+        );
+    }
+    return;
+}
+
+// 인증 결과 ADD
+if (fr->id == ID_SCA_DCU_AUTH_RESULT_ADD && fr->dlc >= 1) {
+    // 뒤 8바이트 붙이기
+    g_accUserId.append((const char*)fr->data, std::min<int>(fr->dlc, 8));
+    if (g_conn) {
+        const QString uid = QString::fromLatin1(g_accUserId);
+        QMetaObject::invokeMethod(
+            g_conn, [uid]{
+                sendAuthResult(g_conn, uid, 0.95, 0, g_lastAuthReqId);
+            }, Qt::QueuedConnection
+        );
     }
     return;
 }
@@ -355,6 +430,22 @@ if (g_conn && g_profSeatOK && g_profMirrorOK && g_profWheelOK) {
             << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
 }
 
+if (fr->id == ID_TCU_DCU_USER_PROFILE_UPDATE_ACK && fr->dlc >= 2) {
+    uint8_t ackIndex = fr->data[0]; // 1:Seat, 2:Mirror, 3:Wheel
+    uint8_t ackState = fr->data[1]; // 0:OK, 1:데이터 일부 누락
+    qInfo() << "[CAN RX] PROFILE_UPDATE_ACK idx=" << ackIndex << "state=" << ackState;
+
+    if (g_conn) {
+        QJsonObject pay{{"index", (int)ackIndex}, {"state", (int)ackState}};
+        QMetaObject::invokeMethod(
+            g_conn, [pay]{
+                g_conn->send({"user/update/ack", /*reqId=*/{}, pay});
+            }, Qt::QueuedConnection
+        );
+    }
+    return;
+}
+
 // ── CAN BEGIN ────────────────────────────────────────────────────────────
 static bool startCAN(QString* errOut=nullptr) {
     CanConfig cfg{0, 500000, 0.75f, 1, CAN_MODE_NORMAL};
@@ -362,11 +453,12 @@ static bool startCAN(QString* errOut=nullptr) {
     if (can_open("can0", cfg) != CAN_OK)      { if (errOut) *errOut = "can_open failed"; return false; }
 
     int subId = 0;
-    uint32_t ids[] = {
-        ID_POW_SEAT_STATE, ID_POW_MIRROR_STATE, ID_POW_WHEEL_STATE,
-        ID_SCA_DCU_AUTH_STATE, ID_SCA_DCU_AUTH_RESULT, ID_SCA_DCU_AUTH_RESULT_ADD,
-        ID_TCU_DCU_USER_PROFILE_SEAT, ID_TCU_DCU_USER_PROFILE_MIRROR, ID_TCU_DCU_USER_PROFILE_WHEEL
-    };
+uint32_t ids[] = {
+    ID_POW_SEAT_STATE, ID_POW_MIRROR_STATE, ID_POW_WHEEL_STATE,
+    ID_SCA_DCU_AUTH_STATE, ID_SCA_DCU_AUTH_RESULT, ID_SCA_DCU_AUTH_RESULT_ADD,
+    ID_TCU_DCU_USER_PROFILE_SEAT, ID_TCU_DCU_USER_PROFILE_MIRROR, ID_TCU_DCU_USER_PROFILE_WHEEL,
+    ID_TCU_DCU_USER_PROFILE_UPDATE_ACK 
+};
     CanFilter flt{};
     flt.type = CAN_FILTER_LIST;
     flt.data.list.list = ids;
@@ -462,6 +554,33 @@ server.addHandler("connect", [](const IpcMessage& m, IpcConnection* c){
         QTimer::singleShot(200, c, [c, reqId=m.reqId]{ sendPowerApplyAck(c, true, reqId); });
     });
 
+server.addHandler("user/update", [](const IpcMessage& m, IpcConnection* c){
+    const QJsonObject& p = m.payload;
+
+    // Seat
+    if (p.contains("seatPosition"))     m_seatPosition = clampInt(p.value("seatPosition").toInt(), 0, 100);
+    if (p.contains("seatAngle"))        m_seatAngle = clampInt(p.value("seatAngle").toInt(), 0, 180);
+    if (p.contains("seatFrontHeight"))  m_seatFrontHeight = clampInt(p.value("seatFrontHeight").toInt(), 0, 100);
+    if (p.contains("seatRearHeight"))   m_seatRearHeight = clampInt(p.value("seatRearHeight").toInt(), 0, 100);
+
+    if (p.contains("sideMirrorLeftYaw"))    m_sideMirrorLeftYaw = clampInt(p.value("sideMirrorLeftYaw").toInt(), -45, 45);
+    if (p.contains("sideMirrorLeftPitch"))  m_sideMirrorLeftPitch = clampInt(p.value("sideMirrorLeftPitch").toInt(), -45, 45);
+    if (p.contains("sideMirrorRightYaw"))   m_sideMirrorRightYaw = clampInt(p.value("sideMirrorRightYaw").toInt(), -45, 45);
+    if (p.contains("sideMirrorRightPitch")) m_sideMirrorRightPitch = clampInt(p.value("sideMirrorRightPitch").toInt(), -45, 45);
+    if (p.contains("roomMirrorYaw"))        m_roomMirrorYaw = clampInt(p.value("roomMirrorYaw").toInt(), -45, 45);
+    if (p.contains("roomMirrorPitch"))      m_roomMirrorPitch = clampInt(p.value("roomMirrorPitch").toInt(), -45, 45);
+
+    if (p.contains("handlePosition"))   m_handlePosition = clampInt(p.value("handlePosition").toInt(), 0, 100);
+    if (p.contains("handleAngle"))      m_handleAngle = clampInt(p.value("handleAngle").toInt(), -90, 90);
+
+    CAN_Tx_USER_PROFILE_SEAT_UPDATE();
+    CAN_Tx_USER_PROFILE_MIRROR_UPDATE();
+    CAN_Tx_USER_PROFILE_WHEEL_UPDATE();
+
+     if (c) {
+        c->send({"user/update/sent", m.reqId, QJsonObject{{"ok", true}}});
+    }
+});
     // 연결 상태 트래킹
     QObject::connect(&server, &IpcServer::clientConnected, [&](IpcConnection* c){
         g_conn = c;
