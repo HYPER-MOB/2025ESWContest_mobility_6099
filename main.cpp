@@ -431,6 +431,12 @@ server.addHandler("system/hello", [](const IpcMessage& m, IpcConnection* c){
     sendSystemStart(c, m.reqId);
 });
 
+server.addHandler("connect", [](const IpcMessage& m, IpcConnection* c){
+    c->send({"system/start", m.reqId, QJsonObject{
+        {"ok", true},
+        {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)}
+    }});
+});
 
     server.addHandler("power/apply", [](const IpcMessage& m, IpcConnection* c) {
         const QJsonObject& p = m.payload;
