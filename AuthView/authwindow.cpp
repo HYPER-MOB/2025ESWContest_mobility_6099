@@ -3,7 +3,6 @@
 
 static const QString kSock = "/tmp/dcu.demo.sock";
 
-
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QDebug>
@@ -18,7 +17,7 @@ AuthWindow::AuthWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    ui->progressLine->setRange(0, 0);
+    ui->progressLine->setRange(0, 0);        // 인디터미닛
     ui->progressLine->setTextVisible(false);
     ui->loadingLabel->setText(QString());
 
@@ -27,8 +26,8 @@ AuthWindow::AuthWindow(QWidget *parent)
     m_ipc = new IpcClient(kSock, this);
     connect(m_ipc, &IpcClient::messageReceived, this, &AuthWindow::onIpcMessage);
 
-    m_waitTimer.setSingleShot(true);
-    connect(&m_waitTimer, &QTimer::timeout, this, &AuthWindow::onWaitTimeout);
+    // m_waitTimer.setSingleShot(true);
+    // connect(&m_waitTimer, &QTimer::timeout, this, &AuthWindow::onWaitTimeout);
 }
 
 AuthWindow::~AuthWindow() { delete ui; }
@@ -47,32 +46,21 @@ void AuthWindow::begin() {
         {"detail", "start"}
     };
 
-
     qInfo().noquote() << "[AUTH] send -> topic=auth/result payload=" << asJsonCompact(payload);
 
     m_reqId = m_ipc->send("auth/result", payload);
 
-
     qInfo().noquote() << "[AUTH] reqId=" << m_reqId;
 
-    m_waitTimer.start(6000);
+    // m_waitTimer.start(6000);
 }
 
 void AuthWindow::advance() {
     switch (m_phase) {
     case Phase::RetryNotice:
-        m_phase = Phase::Loading2;
-        setMessage(QStringLiteral("얼굴 인식 중입니다..."), true);
-        ui->progressLine->setRange(0, 0);
-
-        m_reqId = m_ipc->send("auth/result", QJsonObject{
-            {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
-            {"reason", "face-recognition"},
-            {"detail", "retry"}
-        });
-        m_waitTimer.start(6000);
+    case Phase::Loading2:
+        // 더 이상 사용 안 함
         break;
-
     default:
         break;
     }
@@ -83,14 +71,13 @@ void AuthWindow::onIpcMessage(const IpcMessage& msg) {
                       << " reqId=" << msg.reqId
                       << " payload=" << asJsonCompact(msg.payload);
 
-
     if (msg.topic == "auth/result") {
         if (!m_reqId.isEmpty() && msg.reqId != m_reqId) {
             qInfo() << "[AUTH] reqId mismatch. ignore.";
             return;
         }
 
-        if (m_waitTimer.isActive()) m_waitTimer.stop();
+        // if (m_waitTimer.isActive()) m_waitTimer.stop();
 
         const QJsonObject& p = msg.payload;
         int err = p.value("error").toInt(-999);
@@ -101,16 +88,14 @@ void AuthWindow::onIpcMessage(const IpcMessage& msg) {
             ui->progressLine->setRange(0, 100);
             ui->progressLine->setValue(100);
 
-            QTimer::singleShot(2000, this, [this, p] {
+            QTimer::singleShot(1200, this, [this, p] {
                 m_phase = Phase::Done;
                 emit authFinished(p);
             });
         } else {
-            m_phase = Phase::RetryNotice;
-            setMessage(QStringLiteral("재시도하겠습니다."), false);
-            ui->progressLine->setRange(0, 100);
-            ui->progressLine->setValue(0);
-            m_timer.start(2000);
+            m_phase = Phase::Loading1;
+            setMessage(QStringLiteral("인증 재확인 중입니다..."), true);
+            ui->progressLine->setRange(0, 0);
         }
         return;
     }
@@ -128,15 +113,14 @@ void AuthWindow::onIpcMessage(const IpcMessage& msg) {
 }
 
 void AuthWindow::onWaitTimeout() {
-    m_phase = Phase::RetryNotice;
-    setMessage(QStringLiteral("네트워크 지연으로 재시도하겠습니다."), false);
-    ui->progressLine->setRange(0, 100);
-    ui->progressLine->setValue(0);
 
-    m_timer.start(2000);
 }
 
 void AuthWindow::setMessage(const QString& text, bool busy) {
     ui->loadingLabel->setText(text);
-    if (busy) ui->progressLine->setRange(0, 0);
+    if (busy) {
+        ui->progressLine->setRange(0, 0);    // 인디터미닛
+    } else {
+        ui->progressLine->setRange(0, 100);  // 디터미닛
+    }
 }
