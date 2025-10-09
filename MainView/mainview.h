@@ -29,6 +29,7 @@ public slots:
     void onIpcMessage(const IpcMessage& msg);
 
 private:
+    void onSaveClicked();
     // UI 전환/동기화
     void fadeToPage(QStackedWidget* stack, int nextIndex, int durationMs);
     void syncDashboard();
@@ -89,6 +90,7 @@ private:
     void startSiren();
     void stopSiren();
 
+    QString m_updateReqId;
 };
 
 #endif // MAINVIEW_H
