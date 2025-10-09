@@ -335,6 +335,17 @@ MainView::MainView(QWidget *parent)
     qInfo() << "[siren] exists?"
             << QFile(":/images/MainView/siren.mp3").exists(); // true면 OK
 
+    // ===== SAVE 버튼 연결 =====
+    if (ui->btnSave) {
+        ui->btnSave->setEnabled(true);
+        ui->btnSave->setCheckable(false);
+        connect(ui->btnSave, &QAbstractButton::clicked, this, [this]{
+            qInfo() << "[UI] btnSave clicked";
+            onSaveClicked();                 // 실제 전송
+        });
+    } else {
+        qWarning() << "[UI] btnSave is nullptr (objectName mismatch or not placed)";
+    }
 }
 
 MainView::~MainView() { delete ui; }
@@ -653,5 +664,40 @@ void MainView::onIpcMessage(const IpcMessage& msg)
             dlg->show();
         }, Qt::QueuedConnection);
     }
+
+    if (msg.topic == "user/update/sent" && (!m_updateReqId.isEmpty() && msg.reqId == m_updateReqId)) {
+        const bool ok = msg.payload.value("ok").toBool(false);
+        qInfo() << "[user/update/sent]" << ok << msg.payload;
+        // (선택) ui->lblStatus->setText("업데이트 전송됨");
+    }
+
+    if (msg.topic == "user/update/ack") {
+        const int idx   = msg.payload.value("index").toInt(-1); // 1:Seat 2:Mirror 3:Wheel
+        const int state = msg.payload.value("state").toInt(-1); // 0:OK 1:PartialMissing
+
+        auto nameByIdx = [](int i)->QString {
+            switch(i){ case 1: return "Seat"; case 2: return "Mirror"; case 3: return "Wheel"; }
+            return "Unknown";
+        };
+        auto stateText = [](int s)->QString {
+            switch(s){ case 0: return "OK"; case 1: return "DATA_PARTIAL"; }
+            return "UNKNOWN";
+        };
+
+        qInfo() << "[user/update/ack]" << nameByIdx(idx) << stateText(state) << msg.payload;
+
+    }
+
+}
+
+void MainView::onSaveClicked()
+{
+    if (m_initializing) return;
+
+    QJsonObject payload = buildApplyPayload();
+  m_updateReqId = m_ipc->send("user/update", payload);
+
+    const QByteArray compact = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+    qInfo() << "[user/update] sent reqId=" << m_updateReqId << compact;
 
 }
