@@ -4,6 +4,9 @@
 
 #include "adapter.h"
 #include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <limits.h>
 #include "driver/twai.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -27,6 +30,12 @@ typedef struct Job {
     void*       prep_user;
     struct Job* next;
 } Job;
+
+typedef struct {
+    CanFrame fr;                  // 프레임 스냅샷
+    can_tx_prepare_cb_t prep;     // 콜백 스냅샷
+    void* prep_user;
+} Pending;
 
 typedef struct {
     // TWAI에는 "채널" 하나 가정
@@ -85,64 +94,73 @@ static void twai_from_canframe(const CanFrame* in, twai_message_t* out){
 
 static void rx_task_fn(void* arg){
     Esp32Ch* ch = (Esp32Ch*)arg;
-    while (ch->running){
+    for(;;){
+        // 종료 노티가 들어왔으면 바로 종료
+        if (ulTaskNotifyTake(pdTRUE, 0) > 0) break;
+        if (!ch->running) break;
+
         twai_message_t msg;
-        // 타임아웃 100ms
         if (twai_receive(&msg, pdMS_TO_TICKS(100)) == ESP_OK){
             CanFrame f; canframe_from_twai(&msg, &f);
-            if (ch->on_rx) ch->on_rx(&f, ch->on_rx_user);
+
+            // 콜백/유저 포인터 스냅샷 후 호출
+            adapter_rx_cb_t cb = ch->on_rx;
+            void* u = ch->on_rx_user;
+            if (cb) cb(&f, u);
         }
-        // (선택) 상태 변화 감지 시 on_bus/on_err 호출 가능
+        // (선택) TWAI Alerts로 on_bus/on_err도 처리 가능
     }
+    ch->rx_task = NULL;           // 핸들 무효화
     vTaskDelete(NULL);
 }
 
 static void tx_task_fn(void* arg){
     Esp32Ch* ch = (Esp32Ch*)arg;
-    while (ch->tx_running){
+    for(;;){
+        // 종료 노티가 들어왔으면 바로 종료
+        if (ulTaskNotifyTake(pdTRUE, 0) > 0) break;
+        if (!ch->tx_running) break;
+
         uint64_t t = now_ms();
         uint32_t sleep_ms = 50;
 
-        // 1) 락 안에서는 '무엇을 보낼지'만 결정하고 빠르게 빠져나오기
-        Job* fire_list = NULL; // 이번 턴에 쏠 항목들(단순 포인터 스택 or 배열)
-        Job* jsend[16]; int ns=0; // 간단히 고정 배열(필요시 동적)
+        Pending pend[16]; int np = 0;
+        bool overflow = false;
+
+        // 1) 락 안에서 '무엇을 보낼지' 결정 + 스냅샷
         xSemaphoreTake(ch->mtx, portMAX_DELAY);
-        for (Job* j = ch->jobs; j; j = j->next){
-            if (j->next_due_ms == 0) {
-                j->next_due_ms = t + j->period_ms;
-            }
-            if (t >= j->next_due_ms){
-                // 이번 턴에서 쏠 대상으로 표시 (프레임은 복사해서 보낼 예정)
-                if (ns < (int)(sizeof(jsend)/sizeof(jsend[0]))) {
-                    jsend[ns++] = j;
+        for (Job* j = ch->jobs; j; j = j->next) {
+            if (j->next_due_ms == 0) j->next_due_ms = t + j->period_ms; // or t;
+            if (t >= j->next_due_ms) {
+                if (np < (int)(sizeof(pend)/sizeof(pend[0]))) {
+                    pend[np].fr        = j->fr;
+                    pend[np].prep      = j->prep;
+                    pend[np].prep_user = j->prep_user;
+                    np++;
+                } else {
+                    overflow = true;   // 남은 건 다음 턴에
                 }
-                // catch-up (수학적으로 점프)
                 uint64_t late = t - j->next_due_ms;
                 uint64_t k = late / j->period_ms + 1;
                 j->next_due_ms += k * j->period_ms;
             }
-            // 다음 만기까지 남은 시간으로 최소 sleep 계산
             uint32_t remain = (j->next_due_ms > t) ? (uint32_t)(j->next_due_ms - t) : 0;
             if (remain < sleep_ms) sleep_ms = remain;
         }
         xSemaphoreGive(ch->mtx);
 
-        // 2) 락 밖에서 prep + transmit 수행 (임계구역 외부)
-        for (int i=0; i<ns; ++i){
-            Job* j = jsend[i];
-            CanFrame fr;
-            // 프레임 스냅샷
-            xSemaphoreTake(ch->mtx, portMAX_DELAY);
-            fr = j->fr;
-            xSemaphoreGive(ch->mtx);
-            // 동적 갱신은 로컬 복사본에
-            if (j->prep) j->prep(&fr, j->prep_user);
-            twai_message_t m; twai_from_canframe(&fr, &m);
-            (void)twai_transmit(&m, 0);
+        if (overflow) sleep_ms = 0;     // 용량 초과 시 곧바로 다음 루프
+
+        // 2) 락 밖에서 prep + 전송
+        for (int i=0; i<np; ++i) {
+            if (pend[i].prep) pend[i].prep(&pend[i].fr, pend[i].prep_user);
+            twai_message_t m; twai_from_canframe(&pend[i].fr, &m);
+            (void)twai_transmit(&m, 0); // 필요하면 결과 체크하여 통계/에러콜백
         }
 
         vTaskDelay(pdMS_TO_TICKS(sleep_ms ? sleep_ms : 1));
     }
+    ch->tx_task = NULL;           // 핸들 무효화
     vTaskDelete(NULL);
 }
 /* ========== VTABLE ========== */
@@ -174,14 +192,37 @@ static can_err_t v_ch_open(Adapter* self, const char* name, const CanConfig* cfg
 
     Esp32Ch* ch = (Esp32Ch*)calloc(1, sizeof(Esp32Ch));
     if (!ch){ twai_stop(); twai_driver_uninstall(); return CAN_ERR_MEMORY; }
-    ch->running = 1;
-    xTaskCreate(rx_task_fn, "twai_rx", 4096, ch, 10, &ch->rx_task);
 
-    ch->mtx        = xSemaphoreCreateMutex();
+    ch->mtx = xSemaphoreCreateMutex();
+    if (!ch->mtx){
+        free(ch); twai_stop(); twai_driver_uninstall();
+        return CAN_ERR_MEMORY;
+    }
+
+    ch->running = 1;
+    if (xTaskCreate(rx_task_fn, "twai_rx", 4096, ch, 10, &ch->rx_task) != pdPASS){
+        vSemaphoreDelete(ch->mtx);
+        free(ch); twai_stop(); twai_driver_uninstall();
+        return CAN_ERR_MEMORY;
+    }
+
+
     ch->tx_running = 1;
+    if (xTaskCreate(tx_task_fn, "twai_tx", 4096, ch, 9, &ch->tx_task) != pdPASS){
+        // RX 태스크 종료 후 정리
+        ch->running = 0; if (ch->rx_task) xTaskNotifyGive(ch->rx_task);
+        for (int i=0; i<100; ++i){
+            eTaskState st = ch->rx_task ? eTaskGetState(ch->rx_task) : eDeleted;
+            if (st == eDeleted || !ch->rx_task) break;
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        vSemaphoreDelete(ch->mtx);
+        free(ch); twai_stop(); twai_driver_uninstall();
+        return CAN_ERR_MEMORY;
+    }
+
     ch->next_job_id= 0;
     ch->jobs       = NULL;
-    xTaskCreate(tx_task_fn, "twai_tx", 4096, ch, 9, &ch->tx_task);
 
     *out = (AdapterHandle)ch;
     return CAN_OK;
@@ -191,9 +232,25 @@ static void v_ch_close(Adapter* self, AdapterHandle h){
     (void)self;
     if (!h) return;
     Esp32Ch* ch = (Esp32Ch*)h;
-    ch->running = 0;
+
+    ch->running    = 0;
     ch->tx_running = 0;
-    // rx_task는 loop 끝에서 자가 삭제됨
+    if (ch->rx_task) xTaskNotifyGive(ch->rx_task);
+    if (ch->tx_task) xTaskNotifyGive(ch->tx_task);
+
+    // 2) 태스크 종료 대기 (최대 ~1s)
+    const int max_wait_iters = 100; // 100 * 10ms = 1s
+    for (int i=0; i<max_wait_iters; ++i) {
+        eTaskState rxst = ch->rx_task ? eTaskGetState(ch->rx_task) : eDeleted;
+        eTaskState txst = ch->tx_task ? eTaskGetState(ch->tx_task) : eDeleted;
+        if ((rxst == eDeleted || ch->rx_task == NULL) &&
+            (txst == eDeleted || ch->tx_task == NULL)) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    // 3) 잡/뮤텍스 정리 (이 시점에 태스크는 멈춰 있어야 안전)
     if (ch->mtx) xSemaphoreTake(ch->mtx, portMAX_DELAY);
     for (Job* j = ch->jobs; j; ){
         Job* nx = j->next; free(j); j = nx;
@@ -201,8 +258,11 @@ static void v_ch_close(Adapter* self, AdapterHandle h){
     ch->jobs = NULL;
     if (ch->mtx){ xSemaphoreGive(ch->mtx); vSemaphoreDelete(ch->mtx); ch->mtx=NULL; }
 
+    // 4) 드라이버 정지/해제
     twai_stop();
     twai_driver_uninstall();
+
+    // 5) 마지막으로 컨트롤 블록 해제
     free(ch);
 }
 
@@ -266,18 +326,18 @@ static void v_destroy(Adapter* self){
     free(self);
 }
 
-static can_err_t v_ch_register_job_ex(Adapter* self, int* id, AdapterHandle h, const CanFrame* initial, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user)
+static can_err_t v_ch_register_job_dynamic(Adapter* self, int* id, AdapterHandle h, can_tx_prepare_cb_t prep, void* prep_user, uint32_t period_ms)
 {
     (void)self;
-    if (!h || !initial || period_ms==0) return CAN_ERR_INVALID;
+    if (!h || period_ms==0) return CAN_ERR_INVALID;
     Esp32Ch* ch = (Esp32Ch*)h;
 
     Job* j = (Job*)calloc(1, sizeof(Job));
-    if (!j) return CAN_ERR_INVALID;
+    if (!j) return CAN_ERR_MEMORY;
 
-    j->fr = *initial;
+    memset(&j->fr, 0, sizeof(j->fr));
     j->period_ms = period_ms;
-    j->next_due_ms = esp_timer_get_time()/1000 + period_ms;
+    j->next_due_ms = now_ms() + period_ms;
     j->prep = prep;
     j->prep_user = prep_user;
 
@@ -293,7 +353,28 @@ static can_err_t v_ch_register_job_ex(Adapter* self, int* id, AdapterHandle h, c
 }
 
 static can_err_t v_ch_register_job(Adapter* self, int* id, AdapterHandle h, const CanFrame* fr, uint32_t period_ms){
-    return v_ch_register_job_ex(self, id, h, fr, period_ms, /*prep=*/NULL, /*prep_user=*/NULL);
+    (void)self;
+    if (!h || !fr || period_ms==0) return CAN_ERR_INVALID;
+    Esp32Ch* ch = (Esp32Ch*)h;
+
+    Job* j = (Job*)calloc(1, sizeof(Job));
+    if (!j) return CAN_ERR_MEMORY;
+
+    j->fr = *fr;
+    j->period_ms = period_ms;
+    j->next_due_ms = now_ms() + period_ms;
+    j->prep = NULL;
+    j->prep_user = NULL;
+
+    xSemaphoreTake(ch->mtx, portMAX_DELAY);
+    j->id = ++ch->next_job_id;
+    j->next = ch->jobs;
+    ch->jobs = j;
+    xSemaphoreGive(ch->mtx);
+
+    *id = j->id;
+
+    return CAN_OK;
 }
 
 static can_err_t v_ch_cancel_job(Adapter* self, AdapterHandle h, int jobId){
@@ -322,18 +403,18 @@ Adapter* adapter_esp32_new(void){
     if (!priv){ free(ad); return NULL; }
 
     static const AdapterVTable V = {
-        .probe              = v_probe,
-        .ch_open            = v_ch_open,
-        .ch_close           = v_ch_close,
-        .ch_set_callbacks   = v_ch_set_callbacks,
-        .write              = v_write,
-        .read               = v_read,
-        .status             = v_status,
-        .recover            = v_recover,
-        .ch_register_job    = v_ch_register_job,   // ★ 추가
-        .ch_register_job_ex = v_ch_register_job_ex,
-        .ch_cancel_job      = v_ch_cancel_job,     // ★ 추가
-        .destroy            = v_destroy
+        .probe                      = v_probe,
+        .ch_open                    = v_ch_open,
+        .ch_close                   = v_ch_close,
+        .ch_set_callbacks           = v_ch_set_callbacks,
+        .write                      = v_write,
+        .read                       = v_read,
+        .status                     = v_status,
+        .recover                    = v_recover,
+        .ch_register_job            = v_ch_register_job,
+        .ch_register_job_dynamic    = v_ch_register_job_dynamic,
+        .ch_cancel_job              = v_ch_cancel_job,   
+        .destroy                    = v_destroy
     };
     ad->v = &V; ad->priv = priv;
     return ad;
