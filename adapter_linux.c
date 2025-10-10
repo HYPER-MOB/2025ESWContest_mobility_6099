@@ -35,6 +35,12 @@ typedef struct Job {
 } Job;
 
 typedef struct {
+    CanFrame            fr;        // 프레임 스냅샷
+    can_tx_prepare_cb_t prep;      // 콜백 스냅샷
+    void*               prep_user;
+} Pending;
+
+typedef struct {
     int sock;                    // SocketCAN fd
     char ifname[IFNAMSIZ];
 
@@ -218,57 +224,43 @@ static void* tx_thread_fn(void* arg){
         uint64_t t = now_ms();
         uint32_t sleep_ms = 50;
 
-        // 1) 락 잡고 이번 턴에 보낼 Job들을 수집
-        //   (간단히 동적 배열 사용: jobs 개수만큼 재할당)
-        Job** to_send = NULL;
-        size_t ns = 0, cap = 0;
+        Pending* pend = NULL; size_t np=0, cap=0;
 
         pthread_mutex_lock(&ch->mtx);
         for (Job* j=ch->jobs; j; j=j->next){
             if (j->next_due_ms == 0) j->next_due_ms = t + j->period_ms;
             if (t >= j->next_due_ms){
-                if (ns == cap){
-                    size_t ncap = (cap==0)?8:cap*2;
-                    Job** tmp = (Job**)realloc(to_send, ncap*sizeof(Job*));
-                    if (!tmp) break; // 메모리 부족 시 이번 턴 일부만 전송
-                    to_send = tmp; cap = ncap;
+                if (np == cap){
+                    size_t ncap = cap? cap*2 : 8;
+                    Pending* tmp = (Pending*)realloc(pend, ncap*sizeof(Pending));
+                    if (!tmp) break; // 메모리 부족 → 일부만 전송
+                    pend = tmp; cap = ncap;
                 }
-                to_send[ns++] = j;
+                // ★ 락 안에서 스냅샷
+                pend[np].fr        = j->fr;
+                pend[np].prep      = j->prep;
+                pend[np].prep_user = j->prep_user;
+                np++;
 
-                // catch-up: backlog가 커도 수학적으로 점프
+                // catch-up: 밀린 만큼 수학적으로 점프
                 uint64_t late = t - j->next_due_ms;
                 uint64_t k = late / j->period_ms + 1;
                 j->next_due_ms += k * j->period_ms;
             }
-            uint32_t remain = (j->next_due_ms > t) ? (uint32_t)(j->next_due_ms - t) : 0;
+            uint32_t remain = (j->next_due_ms > t)? (uint32_t)(j->next_due_ms - t) : 0;
             if (remain < sleep_ms) sleep_ms = remain;
         }
         pthread_mutex_unlock(&ch->mtx);
 
-        // 2) 락 밖에서 전송
-        for (size_t i=0;i<ns;i++){
-            Job* j = to_send[i];
-            CanFrame fr;
-
-            // 프레임 스냅샷 (짧게 보호)
-            pthread_mutex_lock(&ch->mtx);
-            fr = j->fr;
-            pthread_mutex_unlock(&ch->mtx);
-
-            // 전송 직전 동적 갱신
-            if (j->prep) j->prep(&fr, j->prep_user);
-
-            struct can_frame lfr; linux_from_canframe(&fr, &lfr);
-            // 논블록 송신 (소켓 버퍼 꽉 차면 drop되므로 필요시 poll로 POLLOUT 대기)
-            (void)write(ch->sock, &lfr, sizeof(lfr));
+        // 락 밖: prep + 송신
+        for (size_t i=0; i<np; ++i){
+            if (pend[i].prep) pend[i].prep(&pend[i].fr, pend[i].prep_user);
+            struct can_frame lfr; linux_from_canframe(&pend[i].fr, &lfr);
+            (void)write(ch->sock, &lfr, sizeof(lfr)); // 필요시 결과 체크
         }
+        free(pend);
 
-        if (to_send) free(to_send);
-
-        // 3) 슬립
-        struct timespec ts;
-        ts.tv_sec = sleep_ms/1000;
-        ts.tv_nsec = (sleep_ms%1000)*1000000L;
+        struct timespec ts = { .tv_sec = sleep_ms/1000, .tv_nsec = (sleep_ms%1000)*1000000L };
         nanosleep(&ts, NULL);
     }
     return NULL;
@@ -299,30 +291,13 @@ static can_err_t v_ch_open(Adapter* self, const char* name, const CanConfig* cfg
     int s = socket(PF_CAN, SOCK_RAW, CAN_RAW);
     if (s < 0) return CAN_ERR_IO;
 
-    struct ifreq ifr;
-    memset(&ifr, 0, sizeof(ifr));
+    struct ifreq ifr = {0};
     strncpy(ifr.ifr_name, name, IFNAMSIZ-1);
+    if (ioctl(s, SIOCGIFINDEX, &ifr) < 0) { close(s); return CAN_ERR_NODEV; }
 
-    if (ioctl(s, SIOCGIFINDEX, &ifr) < 0) {
-        close(s);
-        return CAN_ERR_NODEV;
-    }
-
-    struct sockaddr_can addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.can_family  = AF_CAN;
-    addr.can_ifindex = ifr.ifr_ifindex;
-
-    // (선택) 소켓 레벨 loopback/recv-own 설정 (내부 루프백 on/off)
-    // int loopback = (cfg->mode == CAN_MODE_LOOPBACK || cfg->mode == CAN_MODE_SILENT_LOOPBACK) ? 1 : 0;
-    // setsockopt(s, SOL_CAN_RAW, CAN_RAW_LOOPBACK, &loopback, sizeof(loopback));
-
-    if (bind(s, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        close(s);
-        return CAN_ERR_IO;
-    }
-
-    // 논블록
+    struct sockaddr_can addr = {0};
+    addr.can_family = AF_CAN; addr.can_ifindex = ifr.ifr_ifindex;
+    if (bind(s, (struct sockaddr*)&addr, sizeof(addr)) < 0) { close(s); return CAN_ERR_IO; }
     fcntl(s, F_SETFL, O_NONBLOCK);
 
     // 이하 기존 LinuxCh 할당, RX/TX 스레드 시작 로직 동일
@@ -331,14 +306,26 @@ static can_err_t v_ch_open(Adapter* self, const char* name, const CanConfig* cfg
 
     ch->sock = s;
     strncpy(ch->ifname, name, IFNAMSIZ-1);
-    pthread_mutex_init(&ch->mtx, NULL);
-    ch->jobs = NULL;
-    ch->next_job_id = 0;
+    if (pthread_mutex_init(&ch->mtx, NULL) != 0){
+        free(ch); close(s); return CAN_ERR_MEMORY;
+    }
 
     ch->rx_running = 1;
-    pthread_create(&ch->rx_thread, NULL, rx_thread_fn, ch);
+    if (pthread_create(&ch->rx_thread, NULL, rx_thread_fn, ch) != 0){
+        pthread_mutex_destroy(&ch->mtx); free(ch); close(s); return CAN_ERR_MEMORY;
+    }
+
     ch->tx_running = 1;
-    pthread_create(&ch->tx_thread, NULL, tx_thread_fn, ch);
+    if (pthread_create(&ch->tx_thread, NULL, tx_thread_fn, ch) != 0){
+        // rx 종료 후 정리
+        ch->rx_running = 0;
+        pthread_join(ch->rx_thread, NULL);
+        pthread_mutex_destroy(&ch->mtx); free(ch); close(s);
+        return CAN_ERR_MEMORY;
+    }
+
+    ch->jobs = NULL;
+    ch->next_job_id = 0;
 
     *out = (AdapterHandle)ch;
     return CAN_OK;
@@ -447,15 +434,14 @@ static can_err_t v_recover(Adapter* self, AdapterHandle h){
 }
 
 /* ====== Job 등록/취소/확장 ====== */
-static can_err_t v_ch_register_job_ex(Adapter* self, int* id, AdapterHandle h, const CanFrame* initial, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user)
+static can_err_t v_ch_register_job_dynamic(Adapter* self, int* id, AdapterHandle h, can_tx_prepare_cb_t prep, void* prep_user, uint32_t period_ms)
 {
     (void)self;
-    if (!h || !initial || period_ms==0) return CAN_ERR_INVALID;
+    if (!h || !prep || period_ms == 0) return CAN_ERR_INVALID;
     LinuxCh* ch = (LinuxCh*)h;
 
     Job* j = (Job*)calloc(1, sizeof(Job));
     if (!j) return CAN_ERR_INVALID;
-    j->fr = *initial;
     j->period_ms = period_ms;
     j->next_due_ms = 0;
     j->prep = prep;
@@ -474,7 +460,27 @@ static can_err_t v_ch_register_job_ex(Adapter* self, int* id, AdapterHandle h, c
 
 static can_err_t v_ch_register_job(Adapter* self, int* id, AdapterHandle h, const CanFrame* fr, uint32_t period_ms)
 {
-    return v_ch_register_job_ex(self, id, h, fr, period_ms, NULL, NULL);
+    (void)self;
+    if (!h || !fr || period_ms == 0) return CAN_ERR_INVALID;
+    LinuxCh* ch = (LinuxCh*)h;
+
+    Job* j = (Job*)calloc(1, sizeof(Job));
+    if (!j) return CAN_ERR_INVALID;
+    j->fr = *fr;
+    j->period_ms = period_ms;
+    j->next_due_ms = 0;
+    j->prep = NULL;
+    j->prep_user = NULL;
+
+    pthread_mutex_lock(&ch->mtx);
+    j->id = ++ch->next_job_id;
+    j->next = ch->jobs;
+    ch->jobs = j;
+    pthread_mutex_unlock(&ch->mtx);
+
+    *id = j->id;
+    
+    return CAN_OK;
 }
 
 static can_err_t v_ch_cancel_job(Adapter* self, AdapterHandle h, int jobId){
@@ -510,18 +516,18 @@ Adapter* adapter_linux_new(void){
     if (!priv){ free(ad); return NULL; }
 
     static const AdapterVTable V = {
-        .probe              = v_probe,
-        .ch_open            = v_ch_open,
-        .ch_close           = v_ch_close,
-        .ch_set_callbacks   = v_ch_set_callbacks,
-        .write              = v_write,
-        .read               = v_read,
-        .status             = v_status,
-        .recover            = v_recover,
-        .ch_register_job    = v_ch_register_job,
-        .ch_register_job_ex = v_ch_register_job_ex,
-        .ch_cancel_job      = v_ch_cancel_job,
-        .destroy            = v_destroy
+        .probe                      = v_probe,
+        .ch_open                    = v_ch_open,
+        .ch_close                   = v_ch_close,
+        .ch_set_callbacks           = v_ch_set_callbacks,
+        .write                      = v_write,
+        .read                       = v_read,
+        .status                     = v_status,
+        .recover                    = v_recover,
+        .ch_register_job            = v_ch_register_job,
+        .ch_register_job_dynamic    = v_ch_register_job_dynamic,
+        .ch_cancel_job              = v_ch_cancel_job,
+        .destroy                    = v_destroy
     };
     ad->v = &V; ad->priv = priv;
     return ad;

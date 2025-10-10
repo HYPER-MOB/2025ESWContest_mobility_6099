@@ -16,7 +16,7 @@ typedef struct {
     ChannelNode*    head;
 } can_api_state_t;
 
-static can_api_state_t g_state = { false, CAN_DEVICE_NONE, NULL };
+static can_api_state_t g_state = { false, NULL, NULL };
 
 static Channel* find_by_name(const char* name) {
     for(ChannelNode* n = g_state.head; n; n = n->next) {
@@ -130,14 +130,14 @@ can_err_t   can_register_job(const char* name, int* jobId, const CanFrame* frame
     return channel_register_job(ch, jobId, frame, period_ms);
 }
 
-can_err_t   can_register_job_ex(const char* name, int* jobId, const CanFrame* frame, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user) {
+can_err_t   can_register_job_dynamic(const char* name, int* jobId, can_tx_prepare_cb_t prep, void* prep_user, uint32_t period_ms) {
     if(!g_state.initialized) return CAN_ERR_STATE;
     if(!name || name[0] == '\0') return CAN_ERR_INVALID;
 
     Channel* ch = find_by_name(name);
     if(!ch) return CAN_ERR_INVALID;
 
-    return channel_register_job_ex(ch, jobId, frame, period_ms, prep, prep_user);
+    return channel_register_job_dynamic(ch, jobId, prep, prep_user, period_ms);
 }
 
 can_err_t   can_cancel_job(const char* name, int jobId) {
@@ -171,11 +171,13 @@ can_err_t   can_unsubscribe(const char* name, int subId) {
 }
 
 can_err_t   can_recover(const char* name) {
+    if(!g_state.initialized || !name || name[0]=='\0') return CAN_ERR_STATE;
     Channel* ch = find_by_name(name);
     return ch ? channel_recover(ch) : CAN_ERR_INVALID;
 }
 
 can_bus_state_t can_get_status(const char* name) {
+    if(!g_state.initialized || !name || name[0]=='\0') return CAN_BUS_STATE_BUS_OFF; // 혹은 별도 API 설계
     Channel* ch = find_by_name(name);
-    return ch ? channel_status(ch) : CAN_BUS_STATE_ERROR_PASSIVE;
+    return ch ? channel_status(ch) : CAN_BUS_STATE_BUS_OFF;
 }

@@ -111,7 +111,7 @@ CanFrame fr = {.id=0x123, .dlc=3, .data={0x11,0x22,0x33}};
 if(can_register_job("can0", &jobID, fr, 100) == CAN_OK) {}                                       // 100ms 주기 송신 (고정된 값)
 
 int jobEXID = 0;
-if(can_register_job_ex("can0", &jobEXID, NULL, 200, seq_producer, NULL) == CAN_OK) {}             // 200ms 주기 송신, 송신할 때 seq_producer를 호출하여 frame의 값을 결정
+if(can_register_job_dynamic("can0", &jobEXID, seq_producer, NULL, 200) == CAN_OK) {}             // 200ms 주기 송신, 송신할 때 seq_producer를 호출하여 frame의 값을 결정
 
 CanMessage msg = {0};
 msg.dcu_wheel_order = {.sig_wheel_position = 10, .sig_wheel_angle = 20};
