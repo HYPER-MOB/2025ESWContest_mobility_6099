@@ -140,6 +140,9 @@ can_err_t       channel_stop(Channel* ch) {
         s = ns;
     }
 
+    if (ch->adapter && ch->adapter->v->ch_set_callbacks) {
+        ch->adapter->v->ch_set_callbacks(ch->adapter, ch->h, NULL, NULL, NULL, NULL, NULL, NULL);
+    }
     if(ch->adapter && ch->adapter->v->ch_close) {
         ch->adapter->v->ch_close(ch->adapter, ch->h);
     }
@@ -154,11 +157,13 @@ const char*     channel_name(const Channel* ch) {
 
 can_err_t       channel_write(Channel* ch, const CanFrame* frame, uint32_t timeout_ms) {
     if(!ch || !frame) return CAN_ERR_INVALID;
+    if (!ch->adapter || !ch->adapter->v->write) return CAN_ERR_INVALID;
     return ch->adapter->v->write(ch->adapter, ch->h, frame, timeout_ms);
 }
 
 can_err_t       channel_read(Channel* ch, CanFrame* out, uint32_t timeout_ms) {
     if(!ch || !out) return CAN_ERR_INVALID;
+    if (!ch->adapter || !ch->adapter->v->read) return CAN_ERR_INVALID;
     return ch->adapter->v->read(ch->adapter, ch->h, out, timeout_ms);
 }
 
@@ -168,11 +173,10 @@ can_err_t       channel_register_job(Channel* ch, int* jobId, const CanFrame* fr
     return ch->adapter->v->ch_register_job(ch->adapter, jobId, ch->h, frame, period_ms);
 }
 
-can_err_t       channel_register_job_ex(Channel* ch, int* jobId, const CanFrame* initial, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user) {
-    if (!ch || !initial || period_ms==0) return CAN_ERR_INVALID;
-    if (!ch->adapter || !ch->adapter->v->ch_register_job_ex) return CAN_ERR_INVALID;
-    return ch->adapter->v->ch_register_job_ex(ch->adapter, jobId, ch->h, initial, period_ms, prep, prep_user);
-
+can_err_t       channel_register_job_dynamic(Channel* ch, int* jobId, can_tx_prepare_cb_t prep, void* prep_user, uint32_t period_ms) {
+    if (!ch || period_ms == 0) return CAN_ERR_INVALID;
+    if (!ch->adapter || !ch->adapter->v->ch_register_job_dynamic) return CAN_ERR_INVALID;
+    return ch->adapter->v->ch_register_job_dynamic(ch->adapter, jobId, ch->h, prep, prep_user, period_ms);
 }
 
 can_err_t       channel_cancel_job(Channel* ch, int jobId) {
@@ -184,11 +188,11 @@ can_err_t       channel_cancel_job(Channel* ch, int jobId) {
 can_err_t       channel_subscribe(Channel* ch, int* subId, const CanFilter* filter, can_callback_t cb, void* user) {
     if (!ch || !filter || !cb) return CAN_ERR_INVALID;
     Sub* s = (Sub*)calloc(1, sizeof(Sub));
-    if (!s) return CAN_ERR_INVALID;
+    if (!s) return CAN_ERR_MEMORY;
 
     if (!filter_copy(&s->filter, filter)) { 
         free(s); 
-        return CAN_ERR_INVALID; 
+        return CAN_ERR_MEMORY; 
     }
 
     s->cb   = cb;

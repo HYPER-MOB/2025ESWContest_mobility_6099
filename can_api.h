@@ -6,7 +6,6 @@ typedef enum {
     CAN_DEVICE_NONE = 0,
     CAN_DEVICE_LINUX,
     CAN_DEVICE_ESP32,
-    CAN_DEVICE_DEBUG
 } can_device_t;
 
 typedef enum {
@@ -81,7 +80,7 @@ can_err_t   can_close               (const char* name);
 can_err_t   can_send                (const char* name, CanFrame frame, uint32_t timeout_ms);
 can_err_t   can_recv                (const char* name, CanFrame* out, uint32_t timeout_ms);
 can_err_t   can_register_job        (const char* name, int* jobId, const CanFrame* frame, uint32_t period_ms);
-can_err_t   can_register_job_ex     (const char* name, int* jobId, const CanFrame* frame, uint32_t period_ms, can_tx_prepare_cb_t prep, void* prep_user);
+can_err_t   can_register_job_dynamic(const char* name, int* jobId, can_tx_prepare_cb_t prep, void* prep_user, uint32_t period_ms);
 can_err_t   can_cancel_job          (const char* name, int jobId);
 can_err_t   can_subscribe           (const char* name, int* subId, CanFilter filter, can_callback_t callback, void* user);
 can_err_t   can_unsubscribe         (const char* name, int subId);
