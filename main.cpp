@@ -425,11 +425,6 @@ if (g_conn && g_profSeatOK && g_profMirrorOK && g_profWheelOK) {
 }
         return;
     }
-
-    qInfo() << "[CAN RX] Unknown id=0x" << QString::number(fr->id,16).toUpper()
-            << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
-}
-
 if (fr->id == ID_TCU_DCU_USER_PROFILE_UPDATE_ACK && fr->dlc >= 2) {
     uint8_t ackIndex = fr->data[0]; // 1:Seat, 2:Mirror, 3:Wheel
     uint8_t ackState = fr->data[1]; // 0:OK, 1:데이터 일부 누락
@@ -445,6 +440,11 @@ if (fr->id == ID_TCU_DCU_USER_PROFILE_UPDATE_ACK && fr->dlc >= 2) {
     }
     return;
 }
+
+    qInfo() << "[CAN RX] Unknown id=0x" << QString::number(fr->id,16).toUpper()
+            << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
+}
+
 
 // ── CAN BEGIN ────────────────────────────────────────────────────────────
 static bool startCAN(QString* errOut=nullptr) {
@@ -563,6 +563,7 @@ server.addHandler("user/update", [](const IpcMessage& m, IpcConnection* c){
     if (p.contains("seatFrontHeight"))  m_seatFrontHeight = clampInt(p.value("seatFrontHeight").toInt(), 0, 100);
     if (p.contains("seatRearHeight"))   m_seatRearHeight = clampInt(p.value("seatRearHeight").toInt(), 0, 100);
 
+    // Mirrors (UI -45~45)
     if (p.contains("sideMirrorLeftYaw"))    m_sideMirrorLeftYaw = clampInt(p.value("sideMirrorLeftYaw").toInt(), -45, 45);
     if (p.contains("sideMirrorLeftPitch"))  m_sideMirrorLeftPitch = clampInt(p.value("sideMirrorLeftPitch").toInt(), -45, 45);
     if (p.contains("sideMirrorRightYaw"))   m_sideMirrorRightYaw = clampInt(p.value("sideMirrorRightYaw").toInt(), -45, 45);
@@ -570,6 +571,7 @@ server.addHandler("user/update", [](const IpcMessage& m, IpcConnection* c){
     if (p.contains("roomMirrorYaw"))        m_roomMirrorYaw = clampInt(p.value("roomMirrorYaw").toInt(), -45, 45);
     if (p.contains("roomMirrorPitch"))      m_roomMirrorPitch = clampInt(p.value("roomMirrorPitch").toInt(), -45, 45);
 
+    // Wheel
     if (p.contains("handlePosition"))   m_handlePosition = clampInt(p.value("handlePosition").toInt(), 0, 100);
     if (p.contains("handleAngle"))      m_handleAngle = clampInt(p.value("handleAngle").toInt(), -90, 90);
 
@@ -577,10 +579,9 @@ server.addHandler("user/update", [](const IpcMessage& m, IpcConnection* c){
     CAN_Tx_USER_PROFILE_MIRROR_UPDATE();
     CAN_Tx_USER_PROFILE_WHEEL_UPDATE();
 
-     if (c) {
-        c->send({"user/update/sent", m.reqId, QJsonObject{{"ok", true}}});
-    }
+    if (c) c->send({"user/update/sent", m.reqId, QJsonObject{{"ok", true}}});
 });
+
     // 연결 상태 트래킹
     QObject::connect(&server, &IpcServer::clientConnected, [&](IpcConnection* c){
         g_conn = c;
@@ -597,7 +598,7 @@ server.addHandler("user/update", [](const IpcMessage& m, IpcConnection* c){
         char ch = 0; if (::read(STDIN_FILENO, &ch, 1) <= 0) return;
         if (!g_conn) { qWarning() << "No active IPC connection yet."; return; }
         if (ch=='a' || ch=='A') { sendSystemStart(g_conn, "req-a"); }
-        else if (ch=='d' || ch=='D') { sendSystemWarning(g_conn, "W001", "졸음운전 발견!", "req-d"); }
+       // else if (ch=='d' || ch=='D') { sendSystemWarning(g_conn, "W001", "졸음운전 발견!", "req-d"); }
     });
 
     const int rc = app.exec();
