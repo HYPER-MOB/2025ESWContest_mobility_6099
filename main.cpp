@@ -9,6 +9,11 @@ extern "C" {
 #include <sys/types.h>
 #include <unistd.h>
 
+// 콜백 user 구분용 라벨
+static const char* kBusCan0 = "can0";
+static const char* kBusCan1 = "can1";
+
+
 // ── 소켓 경로 ────────────────────────────────────────────────────────────────
 static const QString kSock = "/tmp/dcu.demo.sock";
 static QPointer<IpcConnection> g_conn;
@@ -235,7 +240,17 @@ static void CAN_Tx_USER_PROFILE_WHEEL_UPDATE() {
 }
 
 // ── CAN RX (버스 구분은 ID로 충분하여 공용 콜백 사용) ───────────────────────
-static void onCanRx(const CanFrame* fr, void* /*user*/) {
+static void onCanRx(const CanFrame* fr, void* user) {
+    const char* bus = (const char*)user;
+
+    // 🔸요청한 로깅: can0에서 id 0x100 들어오면 한 번 출력하고 종료
+    if (bus && strcmp(bus, "can0") == 0 && fr->id == 0x100) {
+        qInfo() << "[CAN0 RX] DEBUG id=0x"
+                << QString::number(fr->id, 16).toUpper()
+                << "dlc=" << fr->dlc
+                << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
+        return; // 좌석 상태 등 기존 분기 타지 않도록 조기 종료
+    }
     // 좌석 상태 (can1)
     if (fr->id == ID_POW_SEAT_STATE && fr->dlc >= 4) {
         qInfo() << "[CAN1 RX] SEAT_STATE  id=0x" << QString::number(fr->id,16).toUpper()
@@ -397,26 +412,25 @@ static bool startCAN(QString* errOut=nullptr) {
     flt_pow.data.list.list  = ids_pow;
     flt_pow.data.list.count = (uint32_t)(sizeof(ids_pow)/sizeof(ids_pow[0]));
     g_canSubPowId = 0;
-    if (can_subscribe("can1", &g_canSubPowId, flt_pow, onCanRx, nullptr) != CAN_OK) {
-        if (errOut) *errOut = "can_subscribe(can1) failed";
-        return false;
-    }
-
+if (can_subscribe("can1", &g_canSubPowId, flt_pow, onCanRx, (void*)kBusCan1) != CAN_OK) {
+    if (errOut) *errOut = "can_subscribe(can1) failed";
+    return false;
+}
     // can0: SCA/TCU 인증/프로필 수신
     static uint32_t ids_sca[] = {
         ID_SCA_DCU_AUTH_STATE, ID_SCA_DCU_AUTH_RESULT, ID_SCA_DCU_AUTH_RESULT_ADD,
         ID_TCU_DCU_USER_PROFILE_SEAT, ID_TCU_DCU_USER_PROFILE_MIRROR, ID_TCU_DCU_USER_PROFILE_WHEEL,
-        ID_TCU_DCU_USER_PROFILE_UPDATE_ACK
+        ID_TCU_DCU_USER_PROFILE_UPDATE_ACK,0x100,
     };
     CanFilter flt_sca{};
     flt_sca.type = CAN_FILTER_LIST;
     flt_sca.data.list.list  = ids_sca;
     flt_sca.data.list.count = (uint32_t)(sizeof(ids_sca)/sizeof(ids_sca[0]));
     g_canSubScaId = 0;
-    if (can_subscribe("can0", &g_canSubScaId, flt_sca, onCanRx, nullptr) != CAN_OK) {
-        if (errOut) *errOut = "can_subscribe(can0) failed";
-        return false;
-    }
+if (can_subscribe("can0", &g_canSubScaId, flt_sca, onCanRx, (void*)kBusCan0) != CAN_OK) {
+    if (errOut) *errOut = "can_subscribe(can0) failed";
+    return false;
+}
 
     qInfo() << "[can] started: can0(SCA/TCU) + can1(POWER)";
     return true;
