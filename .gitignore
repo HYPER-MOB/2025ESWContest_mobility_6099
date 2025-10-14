@@ -1,4 +1,39 @@
-﻿.vs/
-out/
-build/
-CMakeUserPresets.json
+﻿# build & cmake
+/build/
+/build-*/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+_compile_commands.json
+compile_commands.json
+
+# binaries
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.exe
+*.out
+*.log
+
+# IDE
+.vscode/
+.vs/
+.idea/
+*.user
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# runtime
+/tmp/
+*.pid
+*.sock
+sca_uds
