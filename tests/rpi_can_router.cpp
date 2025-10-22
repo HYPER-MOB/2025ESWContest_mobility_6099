@@ -8,35 +8,34 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <cstdint>
 
 static int can_open(const char* ifname) {
     int s = socket(PF_CAN, SOCK_RAW, CAN_RAW);
     if (s < 0) return -1;
     struct ifreq ifr {}; std::strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
-    if (ioctl(s, SIOCGIFINDEX, &ifr) < 0) { close(s); return -1; }
+    if (ioctl(s, SIOCGIFINDEX, &ifr) < 0) { ::close(s); return -1; }
     sockaddr_can addr{}; addr.can_family = AF_CAN; addr.can_ifindex = ifr.ifr_ifindex;
-    if (bind(s, (sockaddr*)&addr, sizeof(addr)) < 0) { close(s); return -1; }
+    if (bind(s, (sockaddr*)&addr, sizeof(addr)) < 0) { ::close(s); return -1; }
     return s;
 }
 
-static bool can_send(int s, uint32_t id, uint8_t code) {
-    struct can_frame f {};
-    f.can_id = id; f.can_dlc = 1; f.data[0] = code;
-    return write(s, &f, sizeof(f)) == (ssize_t)sizeof(f);
+static bool can_send(int s, std::uint32_t id, std::uint8_t code) {
+    struct can_frame f {}; f.can_id = id; f.can_dlc = 1; f.data[0] = code;
+    return ::write(s, &f, sizeof(f)) == (ssize_t)sizeof(f);
 }
-
 static int run_and_log(const char* bin, const char* logFile) {
     std::string cmd = std::string(bin) + " >> " + logFile + " 2>&1";
-    return system(cmd.c_str());
+    return std::system(cmd.c_str());
 }
 
 int main() {
-    const uint32_t ID_REQ_BLE = 0x100;
-    const uint32_t ID_REQ_NFC = 0x101;
-    const uint32_t ID_RSP_BLE = 0x110;
-    const uint32_t ID_RSP_NFC = 0x111;
+    const std::uint32_t ID_REQ_BLE = 0x100;
+    const std::uint32_t ID_REQ_NFC = 0x101;
+    const std::uint32_t ID_RSP_BLE = 0x110;
+    const std::uint32_t ID_RSP_NFC = 0x111;
 
-    system("mkdir -p logs");
+    std::system("mkdir -p logs");
 
     int s = can_open("can0");
     if (s < 0) { perror("can0"); return 1; }
@@ -44,7 +43,7 @@ int main() {
 
     while (true) {
         struct can_frame f {};
-        if (read(s, &f, sizeof(f)) != (ssize_t)sizeof(f)) continue;
+        if (::read(s, &f, sizeof(f)) != (ssize_t)sizeof(f)) continue;
 
         if (f.can_id == ID_REQ_BLE) {
             puts("[router] BLE_REQ");
