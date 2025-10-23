@@ -80,47 +80,51 @@ static std::string build_service_uuid(const std::string& hash16) {
     return std::string(BASE_UUID_PREFIX) + up;
 }
 
-// 안전한 파싱: ret 튜플에서 자식 0(a{oa{sa{sv}}})을 꺼내서 그걸로 iter를 돌린다.
+// 안전 파싱: GetManagedObjects의 리턴은 "a{oa{sa{sv}}}" (튜플 아님!)
 static std::string get_adapter_path(GDBusConnection* conn) {
     std::cerr << "[STEP] get_adapter_path: call GetManagedObjects\n";
     GError* err = nullptr;
     GVariant* ret = g_dbus_connection_call_sync(
-        conn, "org.bluez", "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects",
-        nullptr, nullptr,  // 리턴 타입 검사는 런타임에서 검증
-        G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &err);
+        conn,
+        "org.bluez",
+        "/",
+        "org.freedesktop.DBus.ObjectManager",
+        "GetManagedObjects",
+        nullptr,
+        G_VARIANT_TYPE("a{oa{sa{sv}}}"),  // ← 정확한 reply 타입
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        nullptr,
+        &err
+    );
     if (!ret) {
         std::cerr << "[ERR] GetManagedObjects: " << (err ? err->message : "unknown") << "\n";
         if (err) g_error_free(err);
         std::exit(2);
     }
 
-    std::cerr << "[STEP] get_adapter_path: extract dict\n";
-    GVariant* dict = nullptr; // a{oa{sa{sv}}}
-    // ret는 튜플이므로 0번째 자식이 a{oa{sa{sv}}}
-    g_variant_get(ret, "(a{oa{sa{sv}}})", &dict);
-    if (!dict) { std::cerr << "[ERR] dict null\n"; g_variant_unref(ret); std::exit(2); }
-
-    GVariantIter iter;
-    g_variant_iter_init(&iter, dict);
+    std::cerr << "[STEP] get_adapter_path: iterate\n";
+    GVariantIter* i = nullptr; // iterator over a{oa{sa{sv}}}
+    g_variant_get(ret, "a{oa{sa{sv}}}", &i);
 
     std::string adapterPath;
-    const gchar* objpath;
+    const gchar* objpath = nullptr;
     GVariant* ifaces = nullptr;
 
-    std::cerr << "[STEP] get_adapter_path: iterate\n";
-    while (g_variant_iter_loop(&iter, "{&oa{sa{sv}}}", &objpath, &ifaces)) {
-        GVariantIter ii;
-        const gchar* ifname;
+    while (g_variant_iter_loop(i, "{&oa{sa{sv}}}", &objpath, &ifaces)) {
+        GVariantIter* ii = nullptr;
+        const gchar* ifname = nullptr;
         GVariant* props = nullptr;
-        g_variant_iter_init(&ii, ifaces);
-        while (g_variant_iter_loop(&ii, "{&sa{sv}}", &ifname, &props)) {
+        g_variant_get(ifaces, "a{sa{sv}}", &ii);
+        while (g_variant_iter_loop(ii, "{&sa{sv}}", &ifname, &props)) {
             if (g_strcmp0(ifname, "org.bluez.Adapter1") == 0) {
                 adapterPath = objpath;
             }
         }
+        g_variant_iter_free(ii);
     }
 
-    g_variant_unref(dict);
+    if (i) g_variant_iter_free(i);
     g_variant_unref(ret);
 
     if (adapterPath.empty()) {
@@ -130,7 +134,7 @@ static std::string get_adapter_path(GDBusConnection* conn) {
     return adapterPath;
 }
 
-// ---------- property getters (정확 시그니처) ----------
+// ---------- property getters ----------
 static GVariant* service_get(GDBusConnection*, const gchar*, const gchar*, const gchar*,
     const gchar* prop, GError**, gpointer) {
     if (!g_strcmp0(prop, "UUID"))     return g_variant_new_string(g_service_uuid.c_str());
@@ -170,8 +174,8 @@ static GVariant* adv_get(GDBusConnection*, const gchar*, const gchar*, const gch
 }
 
 // ---------- method handlers ----------
-static void char_method_call(GDBusConnection*, const gchar*, const gchar*,
-    const gchar*, const gchar* method, GVariant* params,
+static void char_method_call(GDBusConnection*, const gchar*, const gchar*, const gchar*,
+    const gchar* method, GVariant* params,
     GDBusMethodInvocation* inv, gpointer) {
     if (!g_strcmp0(method, "WriteValue")) {
         GVariant* value = nullptr, * options = nullptr;
