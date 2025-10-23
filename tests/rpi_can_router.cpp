@@ -1,4 +1,4 @@
-// g++ -std=c++17 router.cpp -o router
+// g++ -std=c++17 tests/router.cpp -o router
 // 실행: sudo ./router
 //
 // 동작 요약
@@ -30,13 +30,12 @@ static constexpr uint32_t ID_REQ_NFC = 0x101;
 static constexpr uint32_t ID_RSP_BLE = 0x110;
 static constexpr uint32_t ID_RSP_NFC = 0x111;
 
-// ====== 설정(필요시 수정) ======
+// ====== 설정 ======
 static std::string DEFAULT_HASH = "A1B2C3D4E5F60708"; // 16-hex(8바이트)
 static std::string ADV_NAME = "SCA-CAR";
 static int         BLE_TIMEOUT = 60;
-
-// ★ 기대 NFC UID (대문자/공백없이 16진 문자열로 맞춰주세요)
-static std::string EXPECTED_NFC_UID = "04AABBCCDDEEFF"; // 예: "04AABBCCDDEEFF"
+// ★ 기대 NFC UID (대문자/공백 없이)
+static std::string EXPECTED_NFC_UID = "04AABBCCDDEEFF";
 
 // ====== CAN helpers ======
 static int can_open(const char* ifname) {
@@ -50,14 +49,16 @@ static int can_open(const char* ifname) {
 }
 static bool can_send_byte(int s, uint32_t id, uint8_t code) {
     struct can_frame f {}; f.can_id = id; f.can_dlc = 1; f.data[0] = code;
-    return ::write(s, &f, sizeof(f)) == (ssize_t)sizeof(f);
+    ssize_t w = ::write(s, &f, sizeof(f));
+    return (w == (ssize_t)sizeof(f));
 }
 
 // ====== 공통: 하위 프로세스 실행 & 출력 캡처 ======
 static int run_and_capture_lines(const std::string& cmd,
     const std::string& logfile,
     std::vector<std::string>& out_lines) {
-    system("mkdir -p logs");
+
+    ::system("mkdir -p logs");
     std::ofstream log(logfile, std::ios::app);
 
     std::cout << "[router] spawn: " << cmd << std::endl;
@@ -82,7 +83,7 @@ static int run_and_capture_lines(const std::string& cmd,
     return exitcode;
 }
 
-// ====== BLE: sca_ble_peripheral 실행 & Write 데이터 감지 ======
+// ====== BLE ======
 static int run_ble_and_capture(const std::string& hash16,
     const std::string& adv_name,
     int timeout_sec,
@@ -96,7 +97,6 @@ static int run_ble_and_capture(const std::string& hash16,
     std::vector<std::string> lines;
     int rc = run_and_capture_lines(cmd, "logs/ble_run.log", lines);
 
-    // 출력에서 data=… 추출(있으면 기록)
     for (auto& s : lines) {
         auto pos = s.find("data=");
         if (pos != std::string::npos) {
@@ -107,16 +107,13 @@ static int run_ble_and_capture(const std::string& hash16,
         }
     }
     std::cout << "[router] BLE captured=\"" << out_written_data << "\" exit=" << rc << "\n";
-    return rc; // 0=ACCESS 성공, 그 외 실패
+    return rc; // 0이면 ACCESS(또는 설정 토큰) 성공
 }
 
-// ====== NFC: test_nfc_log 실행 & UID 파싱/판정 ======
+// ====== NFC ======
 static bool parse_uid_from_line(const std::string& s, std::string& uid_out) {
-    // 예시: "[NFC] UID=04AABBCCDDEEFF" 또는 "UID: 04 AA BB ..."
     auto p = s.find("UID");
     if (p == std::string::npos) return false;
-
-    // '=' 또는 ':' 이후의 토큰들을 붙여서 16진만 남김
     auto q = s.find_first_of("=:", p);
     if (q == std::string::npos) return false;
     std::string t = s.substr(q + 1);
@@ -125,28 +122,19 @@ static bool parse_uid_from_line(const std::string& s, std::string& uid_out) {
     for (char c : t) {
         if (('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')) hex.push_back(toupper(c));
     }
-    if (hex.size() >= 6) { uid_out = hex; return true; } // 최소 몇 바이트라도
+    if (hex.size() >= 6) { uid_out = hex; return true; }
     return false;
 }
-
 static int run_nfc_and_judge(bool& out_match, std::string& out_uid) {
     std::vector<std::string> lines;
     int rc = run_and_capture_lines("./test_nfc_log", "logs/nfc_run.log", lines);
 
-    // 출력에서 UID 한 번 찾아본다
     std::string uid;
     for (auto& s : lines) {
         if (parse_uid_from_line(s, uid)) break;
     }
     out_uid = uid;
-
-    // rc 자체가 0이 아니더라도, UID가 찍혔으면 그걸로 비교해 판정
-    if (!uid.empty()) {
-        out_match = (uid == EXPECTED_NFC_UID);
-    }
-    else {
-        out_match = false; // UID 못 얻었으면 실패
-    }
+    out_match = (!uid.empty() && uid == EXPECTED_NFC_UID);
 
     std::cout << "[router] NFC uid=\"" << uid << "\" expected=\"" << EXPECTED_NFC_UID
         << "\" match=" << (out_match ? "true" : "false") << " exit=" << rc << "\n";
@@ -167,7 +155,6 @@ int main() {
         if (f.can_id == ID_REQ_BLE) {
             std::cout << "[router] ID_REQ_BLE received (dlc=" << (int)f.can_dlc << ")\n";
 
-            // CAN 페이로드 8바이트를 해시로 사용(옵션)
             std::string hash16 = DEFAULT_HASH;
             if (f.can_dlc == 8) {
                 static const char* HEX = "0123456789ABCDEF";
@@ -185,6 +172,7 @@ int main() {
             std::cout << "[router] ID_REQ_NFC received\n";
             bool match = false; std::string uid;
             int rc = run_nfc_and_judge(match, uid);
+            (void)rc;
             can_send_byte(s, ID_RSP_NFC, match ? 0x00 : 0xFF);
         }
     }

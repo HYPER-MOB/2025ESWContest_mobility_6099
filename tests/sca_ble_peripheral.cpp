@@ -1,8 +1,15 @@
-// sca_ble_peripheral.cpp
 // Build:
-//   g++ -std=c++17 sca_ble_peripheral.cpp -o sca_ble_peripheral `pkg-config --cflags --libs glib-2.0 gio-2.0`
+//   g++ -std=c++17 tests/sca_ble_peripheral.cpp -o sca_ble_peripheral `pkg-config --cflags --libs glib-2.0 gio-2.0`
 // Usage:
 //   sudo ./sca_ble_peripheral --hash A1B2C3D4E5F60708 --name CAR123 --timeout 30 --token ACCESS --require-encrypt 0
+//
+// 동작 요약:
+// - system bus에 붙어서 BlueZ(org.bluez) 사용
+// - 첫 Adapter1(hciX) 찾고 Alias 설정
+// - GATT Service/Characteristic DBus 오브젝트 export
+// - GattManager1.RegisterApplication 등록
+// - AdvertisingManager1.RegisterAdvertisement 호출(간단 dict 방식; 환경에 따라 LEAdvertisement1 필요할 수 있음)
+// - WriteValue 수신 시 payload==token 일치 → exit(0), 아니면 에러/timeout → exit(1)
 
 #include <gio/gio.h>
 #include <glib.h>
@@ -13,7 +20,6 @@
 #include <iostream>
 #include <iomanip>
 
-// ---- Config / Defaults ----
 static const char* BASE_UUID_PREFIX = "12345678-0000-1000-8000-";
 static const char* ACCESS_CHAR_UUID = "c0de0001-0000-1000-8000-000000000001";
 
@@ -23,14 +29,17 @@ static std::string g_expected_token = "ACCESS";
 static int  g_timeout_sec = 30;
 static bool g_require_encrypt = false;
 
-static bool g_done = false; // whether any write happened
-static bool g_ok = false; // whether token matched
+static bool g_done = false; // any write happened
+static bool g_ok = false; // token matched
 
 static const char* APP_PATH = "/com/sca/app";
 static const char* SERVICE_PATH = "/com/sca/app/service0";
 static const char* CHAR_PATH = "/com/sca/app/service0/char0";
 
-// ---- Utils ----
+// We must keep node infos alive as long as the registration lives.
+static GDBusNodeInfo* g_service_node_info = nullptr;
+static GDBusNodeInfo* g_char_node_info = nullptr;
+
 static std::string to_upper(std::string s) {
     for (auto& c : s) c = (char)toupper((unsigned char)c);
     return s;
@@ -43,7 +52,6 @@ static std::string build_service_uuid(const std::string& hash16) {
     return std::string(BASE_UUID_PREFIX) + to_upper(hash16);
 }
 
-// Find first Adapter (hciX)
 static std::string get_adapter_path(GDBusConnection* conn) {
     GError* err = nullptr;
     GVariant* ret = g_dbus_connection_call_sync(
@@ -85,7 +93,6 @@ static std::string get_adapter_path(GDBusConnection* conn) {
     return adapterPath;
 }
 
-// ---- Service / Char Interface XML ----
 static const char* SERVICE_IF_XML = R"XML(
 <node>
   <interface name="org.bluez.GattService1">
@@ -116,7 +123,7 @@ static const char* CHAR_IF_XML = R"XML(
 </node>
 )XML";
 
-// ---- Property Getters ----
+// Properties
 static GVariant* service_get(GDBusConnection*, const gchar*, const gchar*,
     const gchar* prop, GError**, gpointer) {
     if (std::string(prop) == "UUID")     return g_variant_new_string(g_service_uuid.c_str());
@@ -143,29 +150,15 @@ static GVariant* char_get(GDBusConnection*, const gchar*, const gchar*,
     return nullptr;
 }
 
-static const GDBusInterfaceInfo* parse_xml(const char* xml) {
-    GError* err = nullptr;
-    GDBusNodeInfo* info = g_dbus_node_info_new_for_xml(xml, &err);
-    if (!info) {
-        std::cerr << "[ERR] XML parse: " << err->message << "\n";
-        g_error_free(err);
-        std::exit(2);
-    }
-    const GDBusInterfaceInfo* iface = info->interfaces[0];
-    // NOTE: info는 여기서만 임시로 쓰고 버림. iface 포인터는 수명 보장이 어려우므로
-    // 안전하게 복사해서 쓰는 게 정석이지만, 간단화를 위해 여기선 즉시 register 시 사용.
-    return iface;
-}
-
-// ---- WriteValue handler ----
-static void on_method_call(GDBusConnection* conn, const gchar* sender, const gchar* obj_path,
+// WriteValue handler
+static void on_method_call(GDBusConnection* /*conn*/, const gchar* /*sender*/, const gchar* /*obj_path*/,
     const gchar* iface, const gchar* method, GVariant* params,
     GDBusMethodInvocation* invoc, gpointer /*user_data*/) {
     if (std::string(iface) == "org.bluez.GattCharacteristic1" &&
         std::string(method) == "WriteValue") {
 
         GVariant* value = nullptr;
-        GVariant* options = nullptr; // a{sv}
+        GVariant* options = nullptr;
         g_variant_get(params, "(@ay@a{sv})", &value, &options);
 
         gsize n = 0;
@@ -180,22 +173,10 @@ static void on_method_call(GDBusConnection* conn, const gchar* sender, const gch
         }
         std::cout << "\"\n";
 
-        // (선택) 옵션에서 device 경로를 뽑아 특정 디바이스 필터링 가능
-        // const gchar* dev_path = nullptr;
-        // if (options) {
-        //     GVariantIter* opti = nullptr;
-        //     const gchar* k; GVariant* v;
-        //     g_variant_get(options, "a{sv}", &opti);
-        //     while (g_variant_iter_loop(opti, "{&sv}", &k, &v)) {
-        //         if (g_str_equal(k, "device")) dev_path = g_variant_get_string(v, nullptr);
-        //     }
-        //     g_variant_iter_free(opti);
-        // }
-
         g_done = true;
         if (data == g_expected_token) {
             g_ok = true;
-            g_dbus_method_invocation_return_value(invoc, nullptr); // success
+            g_dbus_method_invocation_return_value(invoc, nullptr);
         }
         else {
             g_ok = false;
@@ -219,7 +200,7 @@ static const GDBusInterfaceVTable char_vtable = {
 };
 
 int main(int argc, char** argv) {
-    // ---- Parse args ----
+    // ---- args ----
     std::string hash, name = "SCA-CAR";
     int timeoutSec = 30;
     std::string token = "ACCESS";
@@ -244,7 +225,7 @@ int main(int argc, char** argv) {
     g_expected_token = token;
     g_require_encrypt = requireEncrypt;
 
-    // ---- System bus ----
+    // ---- system bus ----
     GError* err = nullptr;
     GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &err);
     if (!conn) {
@@ -253,20 +234,25 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    // ---- Adapter ----
+    // ---- adapter ----
     std::string adapterPath = get_adapter_path(conn);
     std::cout << "[BLE] Adapter: " << adapterPath << "\n";
 
-    // Set local alias
+    // set alias (best effort)
     g_dbus_connection_call_sync(conn, "org.bluez", adapterPath.c_str(),
         "org.freedesktop.DBus.Properties", "Set",
         g_variant_new("(ssv)", "org.bluez.Adapter1", "Alias",
             g_variant_new_string(g_local_name.c_str())),
-        nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr);
+        nullptr, G_DBUS_CALL_FLAGS_NONE, 3000, nullptr, nullptr);
 
-    // ---- Register Service / Char objects ----
+    // ---- export service/char ----
+    g_service_node_info = g_dbus_node_info_new_for_xml(SERVICE_IF_XML, &err);
+    if (!g_service_node_info) { std::cerr << "[ERR] service xml: " << err->message << "\n"; g_error_free(err); return 2; }
+    g_char_node_info = g_dbus_node_info_new_for_xml(CHAR_IF_XML, &err);
+    if (!g_char_node_info) { std::cerr << "[ERR] char xml: " << err->message << "\n"; g_error_free(err); return 2; }
+
     guint reg_service = g_dbus_connection_register_object(
-        conn, SERVICE_PATH, parse_xml(SERVICE_IF_XML),
+        conn, SERVICE_PATH, g_service_node_info->interfaces[0],
         &(GDBusInterfaceVTable){nullptr, nullptr, nullptr},
         nullptr,
         (GDBusInterfaceGetPropertyFunc)service_get,
@@ -278,7 +264,7 @@ int main(int argc, char** argv) {
     }
 
     guint reg_char = g_dbus_connection_register_object(
-        conn, CHAR_PATH, parse_xml(CHAR_IF_XML),
+        conn, CHAR_PATH, g_char_node_info->interfaces[0],
         &char_vtable, nullptr,
         (GDBusInterfaceGetPropertyFunc)char_get,
         nullptr, &err);
@@ -288,7 +274,7 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    // ---- Register GATT Application ----
+    // ---- RegisterApplication ----
     GVariant* app_dict = g_variant_new("a{sv}", nullptr);
     GVariant* ret = g_dbus_connection_call_sync(
         conn, "org.bluez", (adapterPath + "/org/bluez").c_str(),
@@ -302,9 +288,7 @@ int main(int argc, char** argv) {
     }
     g_variant_unref(ret);
 
-    // ---- LE Advertising (simple) ----
-    // NOTE: 엄밀히는 org.bluez.LEAdvertisement1 오브젝트를 export해야 하지만,
-    // 기존 코드 방식 유지(옵션 딕셔너리 전달). 배포판/버전에 따라 실제 구현이 다를 수 있음.
+    // ---- Advertising ----
     GVariantBuilder svcUuids; g_variant_builder_init(&svcUuids, G_VARIANT_TYPE("as"));
     g_variant_builder_add(&svcUuids, "s", g_service_uuid.c_str());
 
@@ -333,7 +317,7 @@ int main(int argc, char** argv) {
         << " encrypt=" << (g_require_encrypt ? "on" : "off")
         << " timeout=" << g_timeout_sec << "s\n";
 
-    // ---- Main loop (wait for write or timeout) ----
+    // ---- main loop wait ----
     int elapsed_ms = 0;
     while (!g_done && elapsed_ms < g_timeout_sec * 1000) {
         g_main_context_iteration(nullptr, FALSE);
@@ -341,15 +325,18 @@ int main(int argc, char** argv) {
         elapsed_ms += 200;
     }
 
-    // ---- Cleanup ----
+    // ---- cleanup ----
     g_dbus_connection_call_sync(
         conn, "org.bluez", (adapterPath + "/org/bluez").c_str(),
         "org.bluez.LEAdvertisingManager1", "UnregisterAdvertisement",
         g_variant_new("(o)", ADV_PATH), nullptr,
-        G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr);
+        G_DBUS_CALL_FLAGS_NONE, 3000, nullptr, nullptr);
 
     g_dbus_connection_unregister_object(conn, reg_char);
     g_dbus_connection_unregister_object(conn, reg_service);
+
+    if (g_char_node_info)    g_dbus_node_info_unref(g_char_node_info);
+    if (g_service_node_info) g_dbus_node_info_unref(g_service_node_info);
 
     return (g_done && g_ok) ? 0 : 1;
 }
