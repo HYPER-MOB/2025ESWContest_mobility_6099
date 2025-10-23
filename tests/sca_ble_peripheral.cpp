@@ -119,18 +119,16 @@ static std::string get_adapter_path(GDBusConnection* conn) {
             const gchar* ifname = nullptr;
             GVariant* props = nullptr;
 
-            else {
-                g_variant_get(ifaces, "a{sa{sv}}", &ii);
-                size_t if_idx = 0;
-                while (g_variant_iter_loop(ii, "{&s@a{sv}}", &ifname, &props)) {
-                    if (g_strcmp0(ifname, "org.bluez.Adapter1") == 0) {
-                        std::cerr << "  [DBG]   -> Adapter1 FOUND at " << objpath << "\n";
-                        adapterPath = objpath;
-                    }
-                    ++if_idx;
+            g_variant_get(ifaces, "a{sa{sv}}", &ii);
+            size_t if_idx = 0;
+            while (g_variant_iter_loop(ii, "{&s@a{sv}}", &ifname, &props)) {
+                if (g_strcmp0(ifname, "org.bluez.Adapter1") == 0) {
+                    std::cerr << "  [DBG]   -> Adapter1 FOUND at " << objpath << "\n";
+                    adapterPath = objpath;
                 }
-                if (ii) g_variant_iter_free(ii);
+                ++if_idx;
             }
+            if (ii) g_variant_iter_free(ii);
             ++obj_idx;
         }
 
