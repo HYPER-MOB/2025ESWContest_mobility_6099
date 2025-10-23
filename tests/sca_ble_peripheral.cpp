@@ -82,77 +82,63 @@ static std::string build_service_uuid(const std::string& hash16) {
 
 // 안전 파싱: GetManagedObjects의 리턴은 "a{oa{sa{sv}}}" (튜플 아님!)
 static std::string get_adapter_path(GDBusConnection* conn) {
-    const char* candidates[] = { "/", "/org/bluez" };
-    for (const char* path : candidates) {
-        GError* err = nullptr;
-        std::cerr << "[STEP] GetManagedObjects at " << path << "\n";
-        GVariant* ret = g_dbus_connection_call_sync(
-            conn, "org.bluez", path,
-            "org.freedesktop.DBus.ObjectManager", "GetManagedObjects",
-            /*parameters*/ nullptr, /*reply_type*/ nullptr,
-            G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &err);
+    GError* err = nullptr;
+    std::cerr << "[STEP] GetManagedObjects at " << '/' << "\n";
+    GVariant* ret = g_dbus_connection_call_sync(
+        conn, "org.bluez", '/',
+        "org.freedesktop.DBus.ObjectManager", "GetManagedObjects",
+        /*parameters*/ nullptr, /*reply_type*/ nullptr,
+        G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &err);
 
-        if (!ret) {
-            std::cerr << "  -> call failed: " << (err ? err->message : "unknown") << "\n";
-            if (err) g_error_free(err);
-            continue;
-        }
-
-        // 1) 바로 dict로 오는 경우
-        if (g_variant_is_of_type(ret, G_VARIANT_TYPE("a{oa{sa{sv}}}"))) {
-            GVariantIter* i = nullptr;
-            g_variant_get(ret, "a{oa{sa{sv}}}", &i);
-
-            std::string adapterPath;
-            const gchar* objpath = nullptr; GVariant* ifaces = nullptr;
-            while (g_variant_iter_loop(i, "{&oa{sa{sv}}}", &objpath, &ifaces)) {
-                GVariantIter* ii = nullptr; const gchar* ifname = nullptr; GVariant* props = nullptr;
-                g_variant_get(ifaces, "a{sa{sv}}", &ii);
-                while (g_variant_iter_loop(ii, "{&sa{sv}}", &ifname, &props)) {
-                    if (g_strcmp0(ifname, "org.bluez.Adapter1") == 0) adapterPath = objpath;
-                }
-                if (ii) g_variant_iter_free(ii);
-            }
-            if (i) g_variant_iter_free(i);
-            g_variant_unref(ret);
-
-            if (!adapterPath.empty()) return adapterPath;
-            std::cerr << "  -> Adapter1 not found at " << path << "\n";
-            continue;
-        }
-
-        // 2) 튜플로 감겨 오는 특이 케이스
-        if (g_variant_is_of_type(ret, G_VARIANT_TYPE_TUPLE)) {
-            GVariant* dict = g_variant_get_child_value(ret, 0);
-            std::string adapterPath;
-
-            if (g_variant_is_of_type(dict, G_VARIANT_TYPE("a{oa{sa{sv}}}"))) {
-                GVariantIter* i = nullptr;
-                g_variant_get(dict, "a{oa{sa{sv}}}", &i);
-                const gchar* objpath = nullptr; GVariant* ifaces = nullptr;
-                while (g_variant_iter_loop(i, "{&oa{sa{sv}}}", &objpath, &ifaces)) {
-                    GVariantIter* ii = nullptr; const gchar* ifname = nullptr; GVariant* props = nullptr;
-                    g_variant_get(ifaces, "a{sa{sv}}", &ii);
-                    while (g_variant_iter_loop(ii, "{&sa{sv}}", &ifname, &props)) {
-                        if (g_strcmp0(ifname, "org.bluez.Adapter1") == 0) adapterPath = objpath;
-                    }
-                    if (ii) g_variant_iter_free(ii);
-                }
-                if (i) g_variant_iter_free(i);
-            }
-
-            g_variant_unref(dict);
-            g_variant_unref(ret);
-            if (!adapterPath.empty()) return adapterPath;
-            std::cerr << "  -> Adapter1 not found in tuple at " << path << "\n";
-            continue;
-        }
-
-        // 예상 밖 타입
-        std::cerr << "  -> unexpected reply type: " << g_variant_get_type_string(ret) << "\n";
-        g_variant_unref(ret);
+    if (!ret) {
+        std::cerr << "  -> call failed: " << (err ? err->message : "unknown") << "\n";
+        if (err) g_error_free(err);
+        continue;
     }
+    std::cerr << "[DBG] ret type = " << g_variant_get_type_string(ret) << "\n";
 
+    if (g_variant_is_of_type(ret, G_VARIANT_TYPE("a{oa{sa{sv}}}"))) {
+        GVariantIter* i = nullptr;
+        g_variant_get(ret, "a{oa{sa{sv}}}", &i);
+
+        std::string adapterPath;
+        const gchar* objpath = nullptr;
+        GVariant* ifaces = nullptr;
+
+        size_t obj_idx = 0;
+        while (g_variant_iter_loop(i, "{&oa{sa{sv}}}", &objpath, &ifaces)) {
+            std::cerr << "[DBG] obj[" << obj_idx << "] path=" << objpath
+                << "  ifaces type=" << g_variant_get_type_string(ifaces) << "\n";
+
+            // ifaces = a{sa{sv}} 의 실제 이터레이터 뽑기
+            GVariantIter* ii = nullptr;
+            const gchar* ifname = nullptr;
+            GVariant* props = nullptr;
+            g_variant_get(ifaces, "a{sa{sv}}", &ii);
+
+            size_t if_idx = 0;
+            while (g_variant_iter_loop(ii, "{&sa{sv}}", &ifname, &props)) {
+                // props 타입은 보통 a{sv}
+                std::cerr << "  [DBG]   iface[" << if_idx << "] name=" << ifname
+                    << "  props type=" << g_variant_get_type_string(props) << "\n";
+
+                if (g_strcmp0(ifname, "org.bluez.Adapter1") == 0) {
+                    std::cerr << "  [DBG]   -> Adapter1 FOUND at " << objpath << "\n";
+                    adapterPath = objpath;
+                }
+                ++if_idx;
+            }
+            if (ii) g_variant_iter_free(ii);
+
+            ++obj_idx;
+        }
+        if (i) g_variant_iter_free(i);
+        g_variant_unref(ret);
+
+        if (!adapterPath.empty()) return adapterPath;
+        std::cerr << "  -> Adapter1 not found at " << path << "\n";
+        continue;
+    }
     std::cerr << "[ERR] No org.bluez.Adapter1 found on any path\n";
     std::exit(2);
 }
