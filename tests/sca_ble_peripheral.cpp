@@ -82,6 +82,7 @@ static std::string build_service_uuid(const std::string& hash16) {
 
 // 안전 파싱: GetManagedObjects의 리턴은 "a{oa{sa{sv}}}" (튜플 아님!)
 static std::string get_adapter_path(GDBusConnection* conn) {
+
     GError* err = nullptr;
     std::cerr << "[STEP] GetManagedObjects at " << '/' << "\n";
     GVariant* ret = g_dbus_connection_call_sync(
@@ -96,11 +97,17 @@ static std::string get_adapter_path(GDBusConnection* conn) {
         std::cerr << "[ERR] No org.bluez.Adapter1 found on any path\n";
         std::exit(2);
     }
+
     std::cerr << "[DBG] ret type = " << g_variant_get_type_string(ret) << "\n";
 
-    if (g_variant_is_of_type(ret, G_VARIANT_TYPE("a{oa{sa{sv}}}"))) {
+    if (g_variant_is_of_type(ret, G_VARIANT_TYPE_TUPLE)) {
+        GVariant* dict = nullptr;
+
+        // 튜플에서 첫 원소(a{oa{sa{sv}}})를 꺼낸다
+        g_variant_get(ret, "(a{oa{sa{sv}}})", &dict);
+
         GVariantIter* i = nullptr;
-        g_variant_get(ret, "a{oa{sa{sv}}}", &i);
+        g_variant_get(dict, "a{oa{sa{sv}}}", &i);
 
         std::string adapterPath;
         const gchar* objpath = nullptr;
@@ -108,10 +115,7 @@ static std::string get_adapter_path(GDBusConnection* conn) {
 
         size_t obj_idx = 0;
         while (g_variant_iter_loop(i, "{&oa{sa{sv}}}", &objpath, &ifaces)) {
-            std::cerr << "[DBG] obj[" << obj_idx << "] path=" << objpath
-                << "  ifaces type=" << g_variant_get_type_string(ifaces) << "\n";
 
-            // ifaces = a{sa{sv}} 의 실제 이터레이터 뽑기
             GVariantIter* ii = nullptr;
             const gchar* ifname = nullptr;
             GVariant* props = nullptr;
@@ -134,6 +138,8 @@ static std::string get_adapter_path(GDBusConnection* conn) {
             ++obj_idx;
         }
         if (i) g_variant_iter_free(i);
+
+        g_variant_unref(dict);
         g_variant_unref(ret);
 
         if (!adapterPath.empty()) return adapterPath;
