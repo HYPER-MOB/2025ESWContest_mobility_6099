@@ -98,14 +98,30 @@ static std::string get_adapter_path(GDBusConnection* conn) {
         std::exit(2);
     }
 
-    std::cerr << "[DBG] ret type = " << g_variant_get_type_string(ret) << "\n";
 
     if (g_variant_is_of_type(ret, G_VARIANT_TYPE_TUPLE)) {
-        GVariant* dict = nullptr;
+        // 1) 튜플 자식 수 확인
+        gsize n_children = g_variant_n_children(ret);
+        std::cerr << "[DBG] tuple children = " << n_children << "\n";
+        if (n_children < 1) {
+            std::cerr << "[ERR] tuple has no child\n";
+            g_variant_unref(ret);
+            // return "" 또는 다음 후보 처리
+        }
 
-        // 튜플에서 첫 원소(a{oa{sa{sv}}})를 꺼낸다
-        g_variant_get(ret, "(a{oa{sa{sv}}})", &dict);
+        // 2) 첫 원소를 child로 안전하게 꺼낸다 (형식 강제 X)
+        GVariant* dict = g_variant_get_child_value(ret, 0);
+        std::cerr << "[DBG] tuple[0] type = " << g_variant_get_type_string(dict) << "\n";
 
+        // 3) 진짜로 a{oa{sa{sv}}}인지 확인
+        if (!g_variant_is_of_type(dict, G_VARIANT_TYPE("a{oa{sa{sv}}}"))) {
+            std::cerr << "[ERR] tuple[0] is not a{oa{sa{sv}}}\n";
+            g_variant_unref(dict);
+            g_variant_unref(ret);
+            // return "" 또는 다음 후보 처리
+        }
+
+        // 4) 이제 이터레이터로 안전하게 순회
         GVariantIter* i = nullptr;
         g_variant_get(dict, "a{oa{sa{sv}}}", &i);
 
@@ -115,35 +131,42 @@ static std::string get_adapter_path(GDBusConnection* conn) {
 
         size_t obj_idx = 0;
         while (g_variant_iter_loop(i, "{&oa{sa{sv}}}", &objpath, &ifaces)) {
+            std::cerr << "[DBG] obj[" << obj_idx << "] path=" << objpath
+                << "  ifaces type=" << g_variant_get_type_string(ifaces) << "\n";
 
             GVariantIter* ii = nullptr;
             const gchar* ifname = nullptr;
             GVariant* props = nullptr;
-            g_variant_get(ifaces, "a{sa{sv}}", &ii);
 
-            size_t if_idx = 0;
-            while (g_variant_iter_loop(ii, "{&sa{sv}}", &ifname, &props)) {
-                // props 타입은 보통 a{sv}
-                std::cerr << "  [DBG]   iface[" << if_idx << "] name=" << ifname
-                    << "  props type=" << g_variant_get_type_string(props) << "\n";
-
-                if (g_strcmp0(ifname, "org.bluez.Adapter1") == 0) {
-                    std::cerr << "  [DBG]   -> Adapter1 FOUND at " << objpath << "\n";
-                    adapterPath = objpath;
-                }
-                ++if_idx;
+            // ifaces도 타입 확인
+            if (!g_variant_is_of_type(ifaces, G_VARIANT_TYPE("a{sa{sv}}"))) {
+                std::cerr << "[ERR] ifaces not a{sa{sv}} (got "
+                    << g_variant_get_type_string(ifaces) << ")\n";
             }
-            if (ii) g_variant_iter_free(ii);
-
+            else {
+                g_variant_get(ifaces, "a{sa{sv}}", &ii);
+                size_t if_idx = 0;
+                while (g_variant_iter_loop(ii, "{&sa{sv}}", &ifname, &props)) {
+                    std::cerr << "  [DBG]   iface[" << if_idx << "] name=" << ifname
+                        << "  props type=" << g_variant_get_type_string(props) << "\n";
+                    if (g_strcmp0(ifname, "org.bluez.Adapter1") == 0) {
+                        std::cerr << "  [DBG]   -> Adapter1 FOUND at " << objpath << "\n";
+                        adapterPath = objpath;
+                    }
+                    ++if_idx;
+                }
+                if (ii) g_variant_iter_free(ii);
+            }
             ++obj_idx;
         }
-        if (i) g_variant_iter_free(i);
 
+        if (i) g_variant_iter_free(i);
         g_variant_unref(dict);
         g_variant_unref(ret);
 
         if (!adapterPath.empty()) return adapterPath;
-        std::cerr << "  -> Adapter1 not found at " << "\n";
+        std::cerr << "  -> Adapter1 not found in tuple result\n";
+        // return "" 또는 다음 후보 처리
     }
     std::cerr << "[ERR] No org.bluez.Adapter1 found on any path\n";
     std::exit(2);
