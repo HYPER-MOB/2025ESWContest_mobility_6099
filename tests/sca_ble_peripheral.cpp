@@ -98,11 +98,12 @@ static std::string get_adapter_path(GDBusConnection* conn) {
         std::exit(2);
     }
 
+    GVariant* dict = nullptr;
 
     if (g_variant_is_of_type(ret, G_VARIANT_TYPE_TUPLE)) {
         gsize n_children = g_variant_n_children(ret);
 
-        GVariant* dict = g_variant_get_child_value(ret, 0);
+        dict = g_variant_get_child_value(ret, 0);
 
         GVariantIter* i = nullptr;
         g_variant_get(dict, "a{oa{sa{sv}}}", &i);
