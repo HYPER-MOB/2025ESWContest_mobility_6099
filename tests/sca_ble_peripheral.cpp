@@ -1,18 +1,23 @@
+// sca_ble_peripheral.cpp
 // Build:
-//   g++ -std=c++17 tests/sca_ble_peripheral.cpp -o sca_ble_peripheral `pkg-config --cflags --libs glib-2.0 gio-2.0`
+//   g++ -std=c++17 sca_ble_peripheral.cpp -o sca_ble_peripheral `pkg-config --cflags --libs glib-2.0 gio-2.0`
+// Or with CMake, make sure to link gio-2.0 / glib-2.0 via pkg-config.
+//
 // Usage:
 //   sudo ./sca_ble_peripheral --hash A1B2C3D4E5F60708 --name CAR123 --timeout 30 --token ACCESS --require-encrypt 0
 //
 // 동작 요약:
-// - system bus에 붙어서 BlueZ(org.bluez) 사용
-// - 첫 Adapter1(hciX) 찾고 Alias 설정
-// - GATT Service/Characteristic DBus 오브젝트 export
-// - GattManager1.RegisterApplication 등록
-// - AdvertisingManager1.RegisterAdvertisement 호출(간단 dict 방식; 환경에 따라 LEAdvertisement1 필요할 수 있음)
-// - WriteValue 수신 시 payload==token 일치 → exit(0), 아니면 에러/timeout → exit(1)
+//  - system bus에 연결 → org.bluez(BlueZ) 사용
+//  - 첫 번째 Adapter(hciX) 찾아 Alias 설정
+//  - GATT Service/Characteristic 오브젝트 export
+//  - GattManager1.RegisterApplication 호출
+//  - AdvertisingManager1.RegisterAdvertisement 호출(간단 dict 방식)
+//  - Characteristic.WriteValue가 들어오면 payload를 검사(기본 "ACCESS")
+//  - 일치하면 성공, 아니면 실패. 타임아웃 시 실패.
 
 #include <gio/gio.h>
 #include <glib.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -20,6 +25,7 @@
 #include <iostream>
 #include <iomanip>
 
+// ---- Config / Defaults ----
 static const char* BASE_UUID_PREFIX = "12345678-0000-1000-8000-";
 static const char* ACCESS_CHAR_UUID = "c0de0001-0000-1000-8000-000000000001";
 
@@ -29,17 +35,14 @@ static std::string g_expected_token = "ACCESS";
 static int  g_timeout_sec = 30;
 static bool g_require_encrypt = false;
 
-static bool g_done = false; // any write happened
-static bool g_ok = false; // token matched
+static bool g_done = false; // whether any write happened
+static bool g_ok = false; // whether token matched
 
 static const char* APP_PATH = "/com/sca/app";
 static const char* SERVICE_PATH = "/com/sca/app/service0";
 static const char* CHAR_PATH = "/com/sca/app/service0/char0";
 
-// We must keep node infos alive as long as the registration lives.
-static GDBusNodeInfo* g_service_node_info = nullptr;
-static GDBusNodeInfo* g_char_node_info = nullptr;
-
+// ---- Utils ----
 static std::string to_upper(std::string s) {
     for (auto& c : s) c = (char)toupper((unsigned char)c);
     return s;
@@ -52,6 +55,7 @@ static std::string build_service_uuid(const std::string& hash16) {
     return std::string(BASE_UUID_PREFIX) + to_upper(hash16);
 }
 
+// Find first Adapter (hciX)
 static std::string get_adapter_path(GDBusConnection* conn) {
     GError* err = nullptr;
     GVariant* ret = g_dbus_connection_call_sync(
@@ -93,6 +97,7 @@ static std::string get_adapter_path(GDBusConnection* conn) {
     return adapterPath;
 }
 
+// ---- Service / Char Interface XML ----
 static const char* SERVICE_IF_XML = R"XML(
 <node>
   <interface name="org.bluez.GattService1">
@@ -123,21 +128,36 @@ static const char* CHAR_IF_XML = R"XML(
 </node>
 )XML";
 
-// Properties
-static GVariant* service_get(GDBusConnection*, const gchar*, const gchar*,
-    const gchar* prop, GError**, gpointer) {
-    if (std::string(prop) == "UUID")     return g_variant_new_string(g_service_uuid.c_str());
-    if (std::string(prop) == "Primary")  return g_variant_new_boolean(TRUE);
-    if (std::string(prop) == "Includes") return g_variant_new("ao", nullptr);
-    if (std::string(prop) == "Device")   return g_variant_new_object_path("/");
+// ---- Property getters: 정확한 시그니처(GDBusInterfaceGetPropertyFunc) ----
+static GVariant* service_get(
+    GDBusConnection* /*connection*/,
+    const gchar*     /*sender*/,
+    const gchar*     /*object_path*/,
+    const gchar*     /*interface_name*/,
+    const gchar* property_name,
+    GError**         /*error*/,
+    gpointer         /*user_data*/) {
+
+    if (std::string(property_name) == "UUID")     return g_variant_new_string(g_service_uuid.c_str());
+    if (std::string(property_name) == "Primary")  return g_variant_new_boolean(TRUE);
+    if (std::string(property_name) == "Includes") return g_variant_new("ao", nullptr);
+    if (std::string(property_name) == "Device")   return g_variant_new_object_path("/");
     return nullptr;
 }
-static GVariant* char_get(GDBusConnection*, const gchar*, const gchar*,
-    const gchar* prop, GError**, gpointer) {
-    if (std::string(prop) == "UUID")    return g_variant_new_string(ACCESS_CHAR_UUID);
-    if (std::string(prop) == "Service") return g_variant_new_object_path(SERVICE_PATH);
-    if (std::string(prop) == "Value")   return g_variant_new_from_data(G_VARIANT_TYPE("ay"), "", 0, TRUE, nullptr, nullptr);
-    if (std::string(prop) == "Flags") {
+
+static GVariant* char_get(
+    GDBusConnection* /*connection*/,
+    const gchar*     /*sender*/,
+    const gchar*     /*object_path*/,
+    const gchar*     /*interface_name*/,
+    const gchar* property_name,
+    GError**         /*error*/,
+    gpointer         /*user_data*/) {
+
+    if (std::string(property_name) == "UUID")    return g_variant_new_string(ACCESS_CHAR_UUID);
+    if (std::string(property_name) == "Service") return g_variant_new_object_path(SERVICE_PATH);
+    if (std::string(property_name) == "Value")   return g_variant_new_from_data(G_VARIANT_TYPE("ay"), "", 0, TRUE, nullptr, nullptr);
+    if (std::string(property_name) == "Flags") {
         if (g_require_encrypt) {
             const gchar* flags[] = { "write", "encrypt-write", nullptr };
             return g_variant_new_strv(flags, -1);
@@ -150,7 +170,7 @@ static GVariant* char_get(GDBusConnection*, const gchar*, const gchar*,
     return nullptr;
 }
 
-// WriteValue handler
+// ---- WriteValue handler ----
 static void on_method_call(GDBusConnection* /*conn*/, const gchar* /*sender*/, const gchar* /*obj_path*/,
     const gchar* iface, const gchar* method, GVariant* params,
     GDBusMethodInvocation* invoc, gpointer /*user_data*/) {
@@ -158,7 +178,7 @@ static void on_method_call(GDBusConnection* /*conn*/, const gchar* /*sender*/, c
         std::string(method) == "WriteValue") {
 
         GVariant* value = nullptr;
-        GVariant* options = nullptr;
+        GVariant* options = nullptr; // a{sv}
         g_variant_get(params, "(@ay@a{sv})", &value, &options);
 
         gsize n = 0;
@@ -176,7 +196,7 @@ static void on_method_call(GDBusConnection* /*conn*/, const gchar* /*sender*/, c
         g_done = true;
         if (data == g_expected_token) {
             g_ok = true;
-            g_dbus_method_invocation_return_value(invoc, nullptr);
+            g_dbus_method_invocation_return_value(invoc, nullptr); // success
         }
         else {
             g_ok = false;
@@ -195,12 +215,21 @@ static void on_method_call(GDBusConnection* /*conn*/, const gchar* /*sender*/, c
         invoc, "org.freedesktop.DBus.Error.UnknownMethod", "Unknown method");
 }
 
-static const GDBusInterfaceVTable char_vtable = {
-    on_method_call, nullptr, nullptr
+// ---- vtables: 이름 있는 정적 객체로 (rvalue 주소 금지) ----
+static const GDBusInterfaceVTable kServiceVTable = {
+    /*method_call*/  nullptr,
+    /*get_property*/ service_get,
+    /*set_property*/ nullptr
+};
+
+static const GDBusInterfaceVTable kCharVTable = {
+    /*method_call*/  on_method_call,
+    /*get_property*/ char_get,
+    /*set_property*/ nullptr
 };
 
 int main(int argc, char** argv) {
-    // ---- args ----
+    // ---- Parse args ----
     std::string hash, name = "SCA-CAR";
     int timeoutSec = 30;
     std::string token = "ACCESS";
@@ -225,7 +254,7 @@ int main(int argc, char** argv) {
     g_expected_token = token;
     g_require_encrypt = requireEncrypt;
 
-    // ---- system bus ----
+    // ---- System bus ----
     GError* err = nullptr;
     GDBusConnection* conn = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &err);
     if (!conn) {
@@ -234,47 +263,64 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    // ---- adapter ----
+    // ---- Adapter ----
     std::string adapterPath = get_adapter_path(conn);
     std::cout << "[BLE] Adapter: " << adapterPath << "\n";
 
-    // set alias (best effort)
+    // Set local alias (표시 이름)
     g_dbus_connection_call_sync(conn, "org.bluez", adapterPath.c_str(),
         "org.freedesktop.DBus.Properties", "Set",
         g_variant_new("(ssv)", "org.bluez.Adapter1", "Alias",
             g_variant_new_string(g_local_name.c_str())),
-        nullptr, G_DBUS_CALL_FLAGS_NONE, 3000, nullptr, nullptr);
+        nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr);
 
-    // ---- export service/char ----
-    g_service_node_info = g_dbus_node_info_new_for_xml(SERVICE_IF_XML, &err);
-    if (!g_service_node_info) { std::cerr << "[ERR] service xml: " << err->message << "\n"; g_error_free(err); return 2; }
-    g_char_node_info = g_dbus_node_info_new_for_xml(CHAR_IF_XML, &err);
-    if (!g_char_node_info) { std::cerr << "[ERR] char xml: " << err->message << "\n"; g_error_free(err); return 2; }
+    // ---- Parse interface XMLs and keep node infos alive ----
+    GDBusNodeInfo* service_node = g_dbus_node_info_new_for_xml(SERVICE_IF_XML, &err);
+    if (!service_node) { std::cerr << "[ERR] SERVICE_IF_XML: " << err->message << "\n"; g_error_free(err); return 2; }
+    GDBusInterfaceInfo* service_iface = service_node->interfaces[0];
 
+    GDBusNodeInfo* char_node = g_dbus_node_info_new_for_xml(CHAR_IF_XML, &err);
+    if (!char_node) { std::cerr << "[ERR] CHAR_IF_XML: " << err->message << "\n"; g_error_free(err); return 2; }
+    GDBusInterfaceInfo* char_iface = char_node->interfaces[0];
+
+    // ---- Register Service / Char objects ----
     guint reg_service = g_dbus_connection_register_object(
-        conn, SERVICE_PATH, g_service_node_info->interfaces[0],
-        &(GDBusInterfaceVTable){nullptr, nullptr, nullptr},
-        nullptr,
-        (GDBusInterfaceGetPropertyFunc)service_get,
-        nullptr, & err);
+        conn,
+        SERVICE_PATH,
+        service_iface,         // 비-const
+        &kServiceVTable,       // 여기서 service_get 연결
+        /*user_data*/ nullptr,
+        /*user_data_free*/ nullptr,
+        &err
+    );
     if (!reg_service) {
         std::cerr << "[ERR] register service: " << (err ? err->message : "unknown") << "\n";
         if (err) g_error_free(err);
+        // 해제
+        g_dbus_node_info_unref(char_node);
+        g_dbus_node_info_unref(service_node);
         return 2;
     }
 
     guint reg_char = g_dbus_connection_register_object(
-        conn, CHAR_PATH, g_char_node_info->interfaces[0],
-        &char_vtable, nullptr,
-        (GDBusInterfaceGetPropertyFunc)char_get,
-        nullptr, &err);
+        conn,
+        CHAR_PATH,
+        char_iface,
+        &kCharVTable,          // on_method_call + char_get
+        /*user_data*/ nullptr,
+        /*user_data_free*/ nullptr,
+        &err
+    );
     if (!reg_char) {
         std::cerr << "[ERR] register char: " << (err ? err->message : "unknown") << "\n";
         if (err) g_error_free(err);
+        g_dbus_connection_unregister_object(conn, reg_service);
+        g_dbus_node_info_unref(char_node);
+        g_dbus_node_info_unref(service_node);
         return 2;
     }
 
-    // ---- RegisterApplication ----
+    // ---- Register GATT Application ----
     GVariant* app_dict = g_variant_new("a{sv}", nullptr);
     GVariant* ret = g_dbus_connection_call_sync(
         conn, "org.bluez", (adapterPath + "/org/bluez").c_str(),
@@ -284,11 +330,17 @@ int main(int argc, char** argv) {
     if (!ret) {
         std::cerr << "[ERR] RegisterApplication: " << (err ? err->message : "unknown") << "\n";
         if (err) g_error_free(err);
+        g_dbus_connection_unregister_object(conn, reg_char);
+        g_dbus_connection_unregister_object(conn, reg_service);
+        g_dbus_node_info_unref(char_node);
+        g_dbus_node_info_unref(service_node);
         return 2;
     }
     g_variant_unref(ret);
 
-    // ---- Advertising ----
+    // ---- LE Advertising (simple) ----
+    // NOTE: BlueZ 버전에 따라 LEAdvertisement1 오브젝트 export가 권장/요구될 수 있음.
+    // 여기서는 원본 코드와 동일한 간단 dict 등록 방식을 사용.
     GVariantBuilder svcUuids; g_variant_builder_init(&svcUuids, G_VARIANT_TYPE("as"));
     g_variant_builder_add(&svcUuids, "s", g_service_uuid.c_str());
 
@@ -307,6 +359,10 @@ int main(int argc, char** argv) {
     if (!ret) {
         std::cerr << "[ERR] RegisterAdvertisement: " << (err ? err->message : "unknown") << "\n";
         if (err) g_error_free(err);
+        g_dbus_connection_unregister_object(conn, reg_char);
+        g_dbus_connection_unregister_object(conn, reg_service);
+        g_dbus_node_info_unref(char_node);
+        g_dbus_node_info_unref(service_node);
         return 2;
     }
     g_variant_unref(ret);
@@ -317,7 +373,7 @@ int main(int argc, char** argv) {
         << " encrypt=" << (g_require_encrypt ? "on" : "off")
         << " timeout=" << g_timeout_sec << "s\n";
 
-    // ---- main loop wait ----
+    // ---- Main loop (wait for write or timeout) ----
     int elapsed_ms = 0;
     while (!g_done && elapsed_ms < g_timeout_sec * 1000) {
         g_main_context_iteration(nullptr, FALSE);
@@ -325,18 +381,18 @@ int main(int argc, char** argv) {
         elapsed_ms += 200;
     }
 
-    // ---- cleanup ----
+    // ---- Cleanup ----
     g_dbus_connection_call_sync(
         conn, "org.bluez", (adapterPath + "/org/bluez").c_str(),
         "org.bluez.LEAdvertisingManager1", "UnregisterAdvertisement",
         g_variant_new("(o)", ADV_PATH), nullptr,
-        G_DBUS_CALL_FLAGS_NONE, 3000, nullptr, nullptr);
+        G_DBUS_CALL_FLAGS_NONE, -1, nullptr, nullptr);
 
     g_dbus_connection_unregister_object(conn, reg_char);
     g_dbus_connection_unregister_object(conn, reg_service);
 
-    if (g_char_node_info)    g_dbus_node_info_unref(g_char_node_info);
-    if (g_service_node_info) g_dbus_node_info_unref(g_service_node_info);
+    if (char_node)    g_dbus_node_info_unref(char_node);
+    if (service_node) g_dbus_node_info_unref(service_node);
 
     return (g_done && g_ok) ? 0 : 1;
 }
