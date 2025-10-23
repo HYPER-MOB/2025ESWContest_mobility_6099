@@ -24,11 +24,8 @@ target_link_libraries(test_ble_log ${BLUEZ_LIBRARIES})
 add_executable(test_nfc_log tests/test_nfc_log.cpp)
 target_link_libraries(test_nfc_log ${LIBNFC_LIBRARIES})
 
-add_executable(rpi_can_router tests/rpi_can_router.cpp)
-target_link_libraries(rpi_can_router ${BLUEZ_LIBRARIES} ${LIBNFC_LIBRARIES})
-
 # ---- sca_ble_peripheral (GIO/GLib ÇÊ¿ä) ----
-add_executable(sca_ble_peripheral src/sca_ble_peripheral.cpp)
+add_executable(sca_ble_peripheral tests/sca_ble_peripheral.cpp)
 
 target_include_directories(sca_ble_peripheral PRIVATE
   ${GLIB_INCLUDE_DIRS}
@@ -50,3 +47,6 @@ target_link_libraries(sca_ble_peripheral
   ${GIO_LIBRARIES}
   ${GLIB_LIBRARIES}
 )
+
+add_executable(rpi_can_router tests/rpi_can_router.cpp)
+target_link_libraries(rpi_can_router ${BLUEZ_LIBRARIES} ${LIBNFC_LIBRARIES})
