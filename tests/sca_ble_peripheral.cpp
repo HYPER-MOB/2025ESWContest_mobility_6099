@@ -130,7 +130,7 @@ static std::string get_adapter_path(GDBusConnection* conn) {
         GVariant* ifaces = nullptr;
 
         size_t obj_idx = 0;
-        while (g_variant_iter_loop(i, "{&oa{sa{sv}}}", &objpath, &ifaces)) {
+        while (g_variant_iter_loop(i, "{&o@a{sa{sv}}}", &objpath, &ifaces)) {
             std::cerr << "[DBG] obj[" << obj_idx << "] path=" << objpath
                 << "  ifaces type=" << g_variant_get_type_string(ifaces) << "\n";
 
