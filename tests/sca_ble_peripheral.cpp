@@ -78,12 +78,6 @@ static const char* OBJMGR_IF_XML = R"XML(
     <method name="GetManagedObjects">
       <arg type="a{oa{sa{sv}}}" direction="out"/>
     </method>
-    <signal name="InterfacesAdded">
-      <arg type="oa{sa{sv}}"/>
-    </signal>
-    <signal name="InterfacesRemoved">
-      <arg type="oas"/>
-    </signal>
   </interface>
 </node>
 )XML";
@@ -99,39 +93,38 @@ static void objmgr_method_call(GDBusConnection* c, const gchar* sender,
         GVariantBuilder root;
         g_variant_builder_init(&root, G_VARIANT_TYPE("a{oa{sa{sv}}}"));
 
-        // --- service 오브젝트 엔트리 ---
+        // --- service 오브젝트 ---
         {
             GVariantBuilder ifmap; g_variant_builder_init(&ifmap, G_VARIANT_TYPE("a{sa{sv}}"));
             GVariantBuilder props; g_variant_builder_init(&props, G_VARIANT_TYPE("a{sv}"));
-            g_variant_builder_add(&props, "{s@v}", "UUID", g_variant_new_string(g_service_uuid.c_str()));
-            g_variant_builder_add(&props, "{s@v}", "Primary", g_variant_new_boolean(TRUE));
-            g_variant_builder_add(&props, "{s@v}", "Includes", g_variant_new("ao", NULL));
-            g_variant_builder_add(&props, "{s@v}", "Device", g_variant_new_object_path("/"));
-            g_variant_builder_add(&ifmap, "{s@a{sv}}", "org.bluez.GattService1", g_variant_builder_end(&props));
-            g_variant_builder_add(&root, "{o@a{sa{sv}}}", SERVICE_PATH, g_variant_builder_end(&ifmap));
+            g_variant_builder_add(&props, "{sv}", "UUID", g_variant_new_string(g_service_uuid.c_str()));
+            g_variant_builder_add(&props, "{sv}", "Primary", g_variant_new_boolean(TRUE));
+            g_variant_builder_add(&props, "{sv}", "Includes", g_variant_new("ao", NULL));
+            // Device는 optional; 넣어도 무방
+            g_variant_builder_add(&ifmap, "{sa{sv}}", "org.bluez.GattService1", g_variant_builder_end(&props));
+            g_variant_builder_add(&root, "{oa{sa{sv}}}", SERVICE_PATH, g_variant_builder_end(&ifmap));
         }
 
-        // --- char 오브젝트 엔트리 ---
+        // --- characteristic 오브젝트 ---
         {
             GVariantBuilder ifmap; g_variant_builder_init(&ifmap, G_VARIANT_TYPE("a{sa{sv}}"));
             GVariantBuilder props; g_variant_builder_init(&props, G_VARIANT_TYPE("a{sv}"));
-            g_variant_builder_add(&props, "{s@v}", "UUID", g_variant_new_string(ACCESS_CHAR_UUID));
-            g_variant_builder_add(&props, "{s@v}", "Service", g_variant_new_object_path(SERVICE_PATH));
-            g_variant_builder_add(&props, "{s@v}", "Value", g_variant_new_from_data(G_VARIANT_TYPE("ay"), "", 0, TRUE, NULL, NULL));
-            {
-                // Flags: as
-                const gchar* flags[] = { "write","write-without-response", NULL };
-                g_variant_builder_add(&props, "{s@v}", "Flags", g_variant_new_strv(flags, -1));
-            }
-            g_variant_builder_add(&ifmap, "{s@a{sv}}", "org.bluez.GattCharacteristic1", g_variant_builder_end(&props));
-            g_variant_builder_add(&root, "{o@a{sa{sv}}}", CHAR_PATH, g_variant_builder_end(&ifmap));
+            g_variant_builder_add(&props, "{sv}", "UUID", g_variant_new_string(ACCESS_CHAR_UUID));
+            g_variant_builder_add(&props, "{sv}", "Service", g_variant_new_object_path(SERVICE_PATH));
+            // 빈 값
+            g_variant_builder_add(&props, "{sv}", "Value", g_variant_new_from_data(G_VARIANT_TYPE("ay"), "", 0, TRUE, NULL, NULL));
+            // Flags(as)
+            const gchar* flags[] = { "write","write-without-response", NULL };
+            g_variant_builder_add(&props, "{sv}", "Flags", g_variant_new_strv(flags, -1));
+            g_variant_builder_add(&ifmap, "{sa{sv}}", "org.bluez.GattCharacteristic1", g_variant_builder_end(&props));
+            g_variant_builder_add(&root, "{oa{sa{sv}}}", CHAR_PATH, g_variant_builder_end(&ifmap));
         }
 
-        g_dbus_method_invocation_return_value(inv, g_variant_new("(a{oa{sa{sv}}})", g_variant_builder_end(&root)));
+        g_dbus_method_invocation_return_value(inv,
+            g_variant_new("(a{oa{sa{sv}}})", g_variant_builder_end(&root)));
         return;
     }
 
-    // 그 외 메서드
     g_dbus_method_invocation_return_dbus_error(inv,
         "org.freedesktop.DBus.Error.UnknownMethod", "Unknown method");
 }
@@ -374,7 +367,7 @@ int main(int argc, char** argv) {
     std::cerr << "[STEP] RegisterAdvertisement\n";
     ret = g_dbus_connection_call_sync(conn, "org.bluez", adapterPath.c_str(),
         "org.bluez.LEAdvertisingManager1", "RegisterAdvertisement",
-        g_variant_new("(oa{sv})", ADV_PATH, g_variant_new("a{sv}", nullptr)),
+        g_variant_new("(o@a{sv})", ADV_PATH, g_variant_new("a{sv}", nullptr)),
         nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &err);
     if (!ret) { std::cerr << "[ERR] RegisterAdvertisement: " << (err ? err->message : "unknown") << "\n"; if (err) g_error_free(err); return 2; }
     g_variant_unref(ret);
