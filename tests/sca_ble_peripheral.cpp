@@ -93,7 +93,8 @@ static std::string get_adapter_path(GDBusConnection* conn) {
     if (!ret) {
         std::cerr << "  -> call failed: " << (err ? err->message : "unknown") << "\n";
         if (err) g_error_free(err);
-        continue;
+        std::cerr << "[ERR] No org.bluez.Adapter1 found on any path\n";
+        std::exit(2);
     }
     std::cerr << "[DBG] ret type = " << g_variant_get_type_string(ret) << "\n";
 
