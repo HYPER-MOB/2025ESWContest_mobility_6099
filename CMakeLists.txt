@@ -24,6 +24,12 @@ target_link_libraries(test_ble_log ${BLUEZ_LIBRARIES})
 add_executable(test_nfc_log tests/test_nfc_log.cpp)
 target_link_libraries(test_nfc_log ${LIBNFC_LIBRARIES})
 
-# 3) CAN 라우터 (요청 수신→BLE/NFC 트리거→결과 응답)
+
+
+# 3) BLE 스캔 통신 테스트
+add_executable(sca_ble_peripheral tests/sca_ble_peripheral.cpp)
+target_link_libraries(test_ble_log ${BLUEZ_LIBRARIES})
+
+# 4) CAN 라우터 (요청 수신→BLE/NFC 트리거→결과 응답)
 add_executable(rpi_can_router tests/rpi_can_router.cpp)
 target_link_libraries(rpi_can_router ${BLUEZ_LIBRARIES} ${LIBNFC_LIBRARIES})
