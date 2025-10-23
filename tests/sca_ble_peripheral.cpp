@@ -88,6 +88,7 @@ static void objmgr_method_call(GDBusConnection* c, const gchar* sender,
 {
     if (g_strcmp0(iface, "org.freedesktop.DBus.ObjectManager") == 0 &&
         g_strcmp0(method, "GetManagedObjects") == 0) {
+        std::cerr << "[STEP] get method \n";
 
         // a{oa{sa{sv}}} 빌드
         GVariantBuilder root;
@@ -101,8 +102,8 @@ static void objmgr_method_call(GDBusConnection* c, const gchar* sender,
             g_variant_builder_add(&props, "{sv}", "Primary", g_variant_new_boolean(TRUE));
             g_variant_builder_add(&props, "{sv}", "Includes", g_variant_new("ao", NULL));
             // Device는 optional; 넣어도 무방
-            g_variant_builder_add(&ifmap, "{sa{sv}}", "org.bluez.GattService1", g_variant_builder_end(&props));
-            g_variant_builder_add(&root, "{oa{sa{sv}}}", SERVICE_PATH, g_variant_builder_end(&ifmap));
+            g_variant_builder_add(&ifmap, "{s@a{sv}}", "org.bluez.GattService1", g_variant_builder_end(&props));
+            g_variant_builder_add(&root, "{o@a{sa{sv}}}", SERVICE_PATH, g_variant_builder_end(&ifmap));
         }
 
         // --- characteristic 오브젝트 ---
@@ -116,8 +117,8 @@ static void objmgr_method_call(GDBusConnection* c, const gchar* sender,
             // Flags(as)
             const gchar* flags[] = { "write","write-without-response", NULL };
             g_variant_builder_add(&props, "{sv}", "Flags", g_variant_new_strv(flags, -1));
-            g_variant_builder_add(&ifmap, "{sa{sv}}", "org.bluez.GattCharacteristic1", g_variant_builder_end(&props));
-            g_variant_builder_add(&root, "{oa{sa{sv}}}", CHAR_PATH, g_variant_builder_end(&ifmap));
+            g_variant_builder_add(&ifmap, "{s@a{sv}}", "org.bluez.GattCharacteristic1", g_variant_builder_end(&props));
+            g_variant_builder_add(&root, "{o@a{sa{sv}}}", CHAR_PATH, g_variant_builder_end(&ifmap));
         }
 
         g_dbus_method_invocation_return_value(inv,
