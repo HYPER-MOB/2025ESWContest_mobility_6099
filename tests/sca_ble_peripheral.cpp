@@ -350,20 +350,36 @@ int main(int argc, char** argv) {
         conn, APP_PATH, objmgr_node->interfaces[0], &OBJMGR_VTABLE, nullptr, nullptr, &err);
     if (!reg_objmgr) { std::cerr << "[ERR] register objmgr: " << (err ? err->message : "unknown") << "\n"; if (err) g_error_free(err); return 2; }
 
-    std::cerr << "[STEP] RegisterApplication\n";
-    GVariant* options = g_variant_new_array(G_VARIANT_TYPE("{sv}"), /*children=*/nullptr, /*n_children=*/0);
-    GVariant* ret = g_dbus_connection_call_sync(
+    std::cerr << "[STEP] RegisterApplication (async)\n";
+
+    GVariant* options = g_variant_new_array(G_VARIANT_TYPE("{sv}"), nullptr, 0); // ºó a{sv}
+    GMainLoop* loop = g_main_loop_new(nullptr, FALSE);
+    bool app_registered = false;
+
+    g_dbus_connection_call(
         conn, "org.bluez", adapterPath.c_str(),
         "org.bluez.GattManager1", "RegisterApplication",
-        g_variant_new("(o@a{sv})", APP_PATH, options),
-        nullptr, G_DBUS_CALL_FLAGS_NONE, 5000, nullptr, &err);
+        g_variant_new("(o@a{sv})", APP_PATH, options),   // @ ÇÊ¼ö
+        nullptr, G_DBUS_CALL_FLAGS_NONE, 5000, nullptr,
+        [](GObject* source, GAsyncResult* res, gpointer user_data) {
+            GError* e = nullptr;
+            GVariant* r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), res, &e);
+            bool* ok = static_cast<bool*>(user_data);
+            if (!r) {
+                std::cerr << "[ERR] RegisterApplication: " << (e ? e->message : "unknown") << "\n";
+                if (e) g_error_free(e);
+                *ok = false;
+            }
+            else {
+                std::cerr << "[STEP] RegisterApplication ok\n";
+                g_variant_unref(r);
+                *ok = true;
+            }
+        },
+        &app_registered
+    );
 
-    if (!ret) {
-        std::cerr << "[ERR] RegisterApplication: " << (err ? err->message : "unknown") << "\n";
-        if (err) g_error_free(err);
-        return 2;
-    }
-    g_variant_unref(ret);
+    while (!app_registered) g_main_context_iteration(nullptr, TRUE);
 
     std::cerr << "[STEP] RegisterAdvertisement\n";
     ret = g_dbus_connection_call_sync(conn, "org.bluez", adapterPath.c_str(),
@@ -395,10 +411,12 @@ int main(int argc, char** argv) {
     g_dbus_connection_unregister_object(conn, reg_adv);
     g_dbus_connection_unregister_object(conn, reg_char);
     g_dbus_connection_unregister_object(conn, reg_service);
+    g_dbus_connection_unregister_object(conn, reg_objmgr);
 
     g_dbus_node_info_unref(adv_node);
     g_dbus_node_info_unref(char_node);
     g_dbus_node_info_unref(service_node);
+    g_dbus_node_info_unref(objmgr_node);
 
     return (g_done && g_ok) ? 0 : 1;
 }
