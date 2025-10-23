@@ -137,7 +137,6 @@ static std::string get_adapter_path(GDBusConnection* conn) {
 
         if (!adapterPath.empty()) return adapterPath;
         std::cerr << "  -> Adapter1 not found at " << "\n";
-        continue;
     }
     std::cerr << "[ERR] No org.bluez.Adapter1 found on any path\n";
     std::exit(2);
