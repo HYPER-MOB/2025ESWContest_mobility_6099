@@ -85,7 +85,7 @@ static std::string get_adapter_path(GDBusConnection* conn) {
     GError* err = nullptr;
     std::cerr << "[STEP] GetManagedObjects at " << '/' << "\n";
     GVariant* ret = g_dbus_connection_call_sync(
-        conn, "org.bluez", '/',
+        conn, "org.bluez", "/",
         "org.freedesktop.DBus.ObjectManager", "GetManagedObjects",
         /*parameters*/ nullptr, /*reply_type*/ nullptr,
         G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &err);
@@ -136,7 +136,7 @@ static std::string get_adapter_path(GDBusConnection* conn) {
         g_variant_unref(ret);
 
         if (!adapterPath.empty()) return adapterPath;
-        std::cerr << "  -> Adapter1 not found at " << path << "\n";
+        std::cerr << "  -> Adapter1 not found at " << "\n";
         continue;
     }
     std::cerr << "[ERR] No org.bluez.Adapter1 found on any path\n";
