@@ -72,6 +72,73 @@ static const char* ADV_IF_XML = R"XML(
   </interface>
 </node>
 )XML";
+static const char* OBJMGR_IF_XML = R"XML(
+<node>
+  <interface name="org.freedesktop.DBus.ObjectManager">
+    <method name="GetManagedObjects">
+      <arg type="a{oa{sa{sv}}}" direction="out"/>
+    </method>
+    <signal name="InterfacesAdded">
+      <arg type="oa{sa{sv}}"/>
+    </signal>
+    <signal name="InterfacesRemoved">
+      <arg type="oas"/>
+    </signal>
+  </interface>
+</node>
+)XML";
+
+static void objmgr_method_call(GDBusConnection* c, const gchar* sender,
+    const gchar* obj_path, const gchar* iface, const gchar* method,
+    GVariant* params, GDBusMethodInvocation* inv, gpointer user_data)
+{
+    if (g_strcmp0(iface, "org.freedesktop.DBus.ObjectManager") == 0 &&
+        g_strcmp0(method, "GetManagedObjects") == 0) {
+
+        // a{oa{sa{sv}}} 빌드
+        GVariantBuilder root;
+        g_variant_builder_init(&root, G_VARIANT_TYPE("a{oa{sa{sv}}}"));
+
+        // --- service 오브젝트 엔트리 ---
+        {
+            GVariantBuilder ifmap; g_variant_builder_init(&ifmap, G_VARIANT_TYPE("a{sa{sv}}"));
+            GVariantBuilder props; g_variant_builder_init(&props, G_VARIANT_TYPE("a{sv}"));
+            g_variant_builder_add(&props, "{s@v}", "UUID", g_variant_new_string(g_service_uuid.c_str()));
+            g_variant_builder_add(&props, "{s@v}", "Primary", g_variant_new_boolean(TRUE));
+            g_variant_builder_add(&props, "{s@v}", "Includes", g_variant_new("ao", NULL));
+            g_variant_builder_add(&props, "{s@v}", "Device", g_variant_new_object_path("/"));
+            g_variant_builder_add(&ifmap, "{s@a{sv}}", "org.bluez.GattService1", g_variant_builder_end(&props));
+            g_variant_builder_add(&root, "{o@a{sa{sv}}}", SERVICE_PATH, g_variant_builder_end(&ifmap));
+        }
+
+        // --- char 오브젝트 엔트리 ---
+        {
+            GVariantBuilder ifmap; g_variant_builder_init(&ifmap, G_VARIANT_TYPE("a{sa{sv}}"));
+            GVariantBuilder props; g_variant_builder_init(&props, G_VARIANT_TYPE("a{sv}"));
+            g_variant_builder_add(&props, "{s@v}", "UUID", g_variant_new_string(ACCESS_CHAR_UUID));
+            g_variant_builder_add(&props, "{s@v}", "Service", g_variant_new_object_path(SERVICE_PATH));
+            g_variant_builder_add(&props, "{s@v}", "Value", g_variant_new_from_data(G_VARIANT_TYPE("ay"), "", 0, TRUE, NULL, NULL));
+            {
+                // Flags: as
+                const gchar* flags[] = { "write","write-without-response", NULL };
+                g_variant_builder_add(&props, "{s@v}", "Flags", g_variant_new_strv(flags, -1));
+            }
+            g_variant_builder_add(&ifmap, "{s@a{sv}}", "org.bluez.GattCharacteristic1", g_variant_builder_end(&props));
+            g_variant_builder_add(&root, "{o@a{sa{sv}}}", CHAR_PATH, g_variant_builder_end(&ifmap));
+        }
+
+        g_dbus_method_invocation_return_value(inv, g_variant_new("(a{oa{sa{sv}}})", g_variant_builder_end(&root)));
+        return;
+    }
+
+    // 그 외 메서드
+    g_dbus_method_invocation_return_dbus_error(inv,
+        "org.freedesktop.DBus.Error.UnknownMethod", "Unknown method");
+}
+
+static const GDBusInterfaceVTable OBJMGR_VTABLE = {
+  objmgr_method_call, nullptr, nullptr
+};
 
 // ---------- utils ----------
 static std::string build_service_uuid(const std::string& hash16) {
@@ -275,6 +342,8 @@ int main(int argc, char** argv) {
     if (!char_node) { std::cerr << "[ERR] char xml: " << err->message << "\n"; g_error_free(err); return 2; }
     GDBusNodeInfo* adv_node = g_dbus_node_info_new_for_xml(ADV_IF_XML, &err);
     if (!adv_node) { std::cerr << "[ERR] adv xml: " << err->message << "\n"; g_error_free(err); return 2; }
+    GDBusNodeInfo* objmgr_node = g_dbus_node_info_new_for_xml(OBJMGR_IF_XML, &err);
+    if (!objmgr_node) { std::cerr << "[ERR] objmgr xml: " << err->message << "\n"; g_error_free(err); return 2; }
 
     std::cerr << "[STEP] register objects\n";
     guint reg_service = g_dbus_connection_register_object(conn, SERVICE_PATH, service_node->interfaces[0], &SERVICE_VTABLE, nullptr, nullptr, &err);
@@ -283,11 +352,12 @@ int main(int argc, char** argv) {
     if (!reg_char) { std::cerr << "[ERR] register char: " << (err ? err->message : "unknown") << "\n"; if (err) g_error_free(err); return 2; }
     guint reg_adv = g_dbus_connection_register_object(conn, ADV_PATH, adv_node->interfaces[0], &ADV_VTABLE, nullptr, nullptr, &err);
     if (!reg_adv) { std::cerr << "[ERR] register adv: " << (err ? err->message : "unknown") << "\n"; if (err) g_error_free(err); return 2; }
+    guint reg_objmgr = g_dbus_connection_register_object(
+        conn, APP_PATH, objmgr_node->interfaces[0], &OBJMGR_VTABLE, nullptr, nullptr, &err);
+    if (!reg_objmgr) { std::cerr << "[ERR] register objmgr: " << (err ? err->message : "unknown") << "\n"; if (err) g_error_free(err); return 2; }
 
     std::cerr << "[STEP] RegisterApplication\n";
     GVariant* options = g_variant_new_array(G_VARIANT_TYPE("{sv}"), /*children=*/nullptr, /*n_children=*/0);
-    std::cerr << "[DBG] options=" << options
-        << " type=" << (options ? g_variant_get_type_string(options) : "NULL") << "\n";
     GVariant* ret = g_dbus_connection_call_sync(
         conn, "org.bluez", adapterPath.c_str(),
         "org.bluez.GattManager1", "RegisterApplication",
