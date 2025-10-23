@@ -285,11 +285,25 @@ int main(int argc, char** argv) {
     if (!reg_adv) { std::cerr << "[ERR] register adv: " << (err ? err->message : "unknown") << "\n"; if (err) g_error_free(err); return 2; }
 
     std::cerr << "[STEP] RegisterApplication\n";
-    GVariant* ret = g_dbus_connection_call_sync(conn, "org.bluez", adapterPath.c_str(),
+    GVariantBuilder opts;
+    g_variant_builder_init(&opts, G_VARIANT_TYPE_VARDICT); // == G_VARIANT_TYPE("a{sv}")
+    // (필요하면 중간에 옵션 추가 가능)
+    // g_variant_builder_add(&opts, "{sv}", "Experimental", g_variant_new_boolean(TRUE));
+
+    GVariant* options = g_variant_builder_end(&opts);      // ← 반드시 init 후 end
+    // 이제 options는 타입 a{sv}의 GVariant*
+
+    GVariant* ret = g_dbus_connection_call_sync(
+        conn, "org.bluez", adapterPath.c_str(),
         "org.bluez.GattManager1", "RegisterApplication",
-        g_variant_new("(oa{sv})", APP_PATH, g_variant_new("a{sv}", nullptr)),
-        nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &err);
-    if (!ret) { std::cerr << "[ERR] RegisterApplication: " << (err ? err->message : "unknown") << "\n"; if (err) g_error_free(err); return 2; }
+        g_variant_new("(oa{sv})", APP_PATH, options),       // ← options 그대로 전달
+        nullptr, G_DBUS_CALL_FLAGS_NONE, 5000, nullptr, &err);
+
+    if (!ret) {
+        std::cerr << "[ERR] RegisterApplication: " << (err ? err->message : "unknown") << "\n";
+        if (err) g_error_free(err);
+        return 2;
+    }
     g_variant_unref(ret);
 
     std::cerr << "[STEP] RegisterAdvertisement\n";
