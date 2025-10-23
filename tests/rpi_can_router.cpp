@@ -23,6 +23,7 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
+#include <cstdint>
 
 static constexpr uint32_t ID_REQ_BLE = 0x100;
 static constexpr uint32_t ID_REQ_NFC = 0x101;
