@@ -101,7 +101,7 @@ static std::string get_adapter_path(GDBusConnection* conn) {
     GVariant* dict = nullptr;
 
     if (g_variant_is_of_type(ret, G_VARIANT_TYPE_TUPLE)) {
-        gsize n_children = g_variant_n_children(ret);
+        g_variant_n_children(ret);
 
         dict = g_variant_get_child_value(ret, 0);
 
@@ -291,7 +291,7 @@ int main(int argc, char** argv) {
     GVariant* ret = g_dbus_connection_call_sync(
         conn, "org.bluez", adapterPath.c_str(),
         "org.bluez.GattManager1", "RegisterApplication",
-        g_variant_new("(oa{sv})", APP_PATH, options),       // ← options 그대로 전달
+        g_variant_new("(o@a{sv})", APP_PATH, options),
         nullptr, G_DBUS_CALL_FLAGS_NONE, 5000, nullptr, &err);
 
     if (!ret) {
