@@ -1,25 +1,20 @@
-cmake_minimum_required(VERSION 3.10)
-project(sca_core LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.14)
+project(sca_car CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_BUILD_TYPE Release)
 
-add_compile_options(-Wall -Wextra -Wpedantic)
-include_directories(include)
+# 서브모듈 빌드: BLE 실행파일, NFC/Camera 라이브러리
+add_subdirectory(ble)
+add_subdirectory(nfc)
+add_subdirectory(camera)
 
-find_package(Threads REQUIRED)
-find_library(BLUETOOTH_LIB bluetooth)
-
-add_executable(sca_core
+add_executable(router
   src/main.cpp
-  src/common.cpp
-  src/event_bus.cpp
-  src/ble_module.cpp
-  src/nfc_module.cpp
-  src/can_iface.cpp
-  src/orchestrator.cpp
-  src/log_sink.cpp
-  src/can_db.cpp
+  src/workers.cpp
+  src/sequencer.cpp
 )
 
-target_link_libraries(sca_core PRIVATE ${BLUETOOTH_LIB} Threads::Threads)
+target_include_directories(router PRIVATE include config)
+target_link_libraries(router PRIVATE pthread nfclib camlib)
