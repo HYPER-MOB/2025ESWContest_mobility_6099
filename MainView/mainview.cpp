@@ -47,6 +47,8 @@ constexpr int HANDLE_POS_STEP= 1;
 
 const QString kSock = "/tmp/dcu.demo.sock";
 
+static inline int clampInt(int v, int lo, int hi) { return std::min(hi, std::max(lo, v)); }
+
 const char* kToggleQSS =
     "QPushButton {"
     "  border: 1px solid #B0B0B0; border-radius: 8px; padding: 6px 10px;"
@@ -66,6 +68,14 @@ MainView::MainView(QWidget *parent)
     // ===== IPC =====
     m_ipc = new IpcClient(kSock, this);
     connect(m_ipc, &IpcClient::messageReceived, this, &MainView::onIpcMessage);
+
+    QJsonObject hello{
+        {"who", "ui"},
+        {"page", "MainView"},
+        {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)}
+    };
+    m_ipc->send("connect", hello);
+
 
     // ===== 메인 페이지 전환 버튼 =====
     ui->stackedCenter->setCurrentWidget(ui->pageSettings);
@@ -686,6 +696,73 @@ void MainView::onIpcMessage(const IpcMessage& msg)
 
         qInfo() << "[user/update/ack]" << nameByIdx(idx) << stateText(state) << msg.payload;
 
+    }
+
+    if (msg.topic == "power/state") {
+        const auto &p = msg.payload;
+
+        // Seat
+        if (p.contains("seatPosition"))     m_seatPosition     = clampInt(p.value("seatPosition").toInt(), SEAT_POS_MIN,   SEAT_POS_MAX);
+        if (p.contains("seatAngle"))        m_seatAngle        = clampInt(p.value("seatAngle").toInt(),    SEAT_ANGLE_MIN, SEAT_ANGLE_MAX);
+        if (p.contains("seatFrontHeight"))  m_seatFrontHeight  = clampInt(p.value("seatFrontHeight").toInt(), SEAT_HT_MIN, SEAT_HT_MAX);
+        if (p.contains("seatRearHeight"))   m_seatRearHeight   = clampInt(p.value("seatRearHeight").toInt(),  SEAT_HT_MIN, SEAT_HT_MAX);
+
+        // Side Mirror
+        if (p.contains("sideMirrorLeftYaw"))    m_sideMirrorLeftYaw    = clampInt(p.value("sideMirrorLeftYaw").toInt(),   ANGLE_MIRROR_MIN, ANGLE_MIRROR_MAX);
+        if (p.contains("sideMirrorLeftPitch"))  m_sideMirrorLeftPitch  = clampInt(p.value("sideMirrorLeftPitch").toInt(), ANGLE_MIRROR_MIN, ANGLE_MIRROR_MAX);
+        if (p.contains("sideMirrorRightYaw"))   m_sideMirrorRightYaw   = clampInt(p.value("sideMirrorRightYaw").toInt(),  ANGLE_MIRROR_MIN, ANGLE_MIRROR_MAX);
+        if (p.contains("sideMirrorRightPitch")) m_sideMirrorRightPitch = clampInt(p.value("sideMirrorRightPitch").toInt(),ANGLE_MIRROR_MIN, ANGLE_MIRROR_MAX);
+
+        // Room Mirror
+        if (p.contains("roomMirrorYaw"))   m_roomMirrorYaw   = clampInt(p.value("roomMirrorYaw").toInt(),   ANGLE_MIRROR_MIN, ANGLE_MIRROR_MAX);
+        if (p.contains("roomMirrorPitch")) m_roomMirrorPitch = clampInt(p.value("roomMirrorPitch").toInt(), ANGLE_MIRROR_MIN, ANGLE_MIRROR_MAX);
+
+        // Wheel
+        if (p.contains("handlePosition"))  m_handlePosition = clampInt(p.value("handlePosition").toInt(), HANDLE_POS_MIN, HANDLE_POS_MAX);
+        if (p.contains("handleAngle"))     m_handleAngle    = clampInt(p.value("handleAngle").toInt(),    ANGLE_HANDLE_MIN, ANGLE_HANDLE_MAX);
+
+        // 라벨 & 대시보드 동기화
+        updateHandleLabel();
+        updateSeatLabel();
+        updateRoomMirrorLabel();
+        updateSideMirrorLabel();
+        syncDashboard();
+    }
+    // 좌석만 부분 업데이트 (state/seat)
+    if (msg.topic == "state/seat") {
+        const auto &p = msg.payload;
+        if (p.contains("seatPosition"))     m_seatPosition     = clampInt(p.value("seatPosition").toInt(), SEAT_POS_MIN,   SEAT_POS_MAX);
+        if (p.contains("seatAngle"))        m_seatAngle        = clampInt(p.value("seatAngle").toInt(),    SEAT_ANGLE_MIN, SEAT_ANGLE_MAX);
+        if (p.contains("seatFrontHeight"))  m_seatFrontHeight  = clampInt(p.value("seatFrontHeight").toInt(), SEAT_HT_MIN, SEAT_HT_MAX);
+        if (p.contains("seatRearHeight"))   m_seatRearHeight   = clampInt(p.value("seatRearHeight").toInt(),  SEAT_HT_MIN, SEAT_HT_MAX);
+
+        updateSeatLabel();
+        syncDashboard();
+    }
+
+    // 미러만 부분 업데이트 (state/mirror)
+    if (msg.topic == "state/mirror") {
+        const auto &p = msg.payload;
+        if (p.contains("sideMirrorLeftYaw"))    m_sideMirrorLeftYaw    = clampInt(p.value("sideMirrorLeftYaw").toInt(),   ANGLE_MIRROR_MIN, ANGLE_MIRROR_MAX);
+        if (p.contains("sideMirrorLeftPitch"))  m_sideMirrorLeftPitch  = clampInt(p.value("sideMirrorLeftPitch").toInt(), ANGLE_MIRROR_MIN, ANGLE_MIRROR_MAX);
+        if (p.contains("sideMirrorRightYaw"))   m_sideMirrorRightYaw   = clampInt(p.value("sideMirrorRightYaw").toInt(),  ANGLE_MIRROR_MIN, ANGLE_MIRROR_MAX);
+        if (p.contains("sideMirrorRightPitch")) m_sideMirrorRightPitch = clampInt(p.value("sideMirrorRightPitch").toInt(),ANGLE_MIRROR_MIN, ANGLE_MIRROR_MAX);
+        if (p.contains("roomMirrorYaw"))        m_roomMirrorYaw        = clampInt(p.value("roomMirrorYaw").toInt(),       ANGLE_MIRROR_MIN, ANGLE_MIRROR_MAX);
+        if (p.contains("roomMirrorPitch"))      m_roomMirrorPitch      = clampInt(p.value("roomMirrorPitch").toInt(),     ANGLE_MIRROR_MIN, ANGLE_MIRROR_MAX);
+
+        updateSideMirrorLabel();
+        updateRoomMirrorLabel();
+        syncDashboard();
+    }
+
+    // 핸들만 부분 업데이트 (state/wheel)
+    if (msg.topic == "state/wheel") {
+        const auto &p = msg.payload;
+        if (p.contains("handlePosition"))  m_handlePosition = clampInt(p.value("handlePosition").toInt(), HANDLE_POS_MIN, HANDLE_POS_MAX);
+        if (p.contains("handleAngle"))     m_handleAngle    = clampInt(p.value("handleAngle").toInt(),    ANGLE_HANDLE_MIN, ANGLE_HANDLE_MAX);
+
+        updateHandleLabel();
+        syncDashboard();
     }
 
 }
