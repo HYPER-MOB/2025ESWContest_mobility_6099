@@ -33,15 +33,15 @@ static const uint32_t ID_RSP_BLE = 0x110;
 static const uint32_t ID_RSP_NFC = 0x111;
 
 // ---- Parameters ----
-static const char* DEFAULT_HASH = "A1B2C3D4E5F60708";
+static const char* DEFAULT_HASH = "A1B2C3D4E5F6";
 static const char* ADV_NAME = "SCA-CAR";
 static const int   BLE_TIMEOUT = 60;
 
 // NFC 기대 UID(대문자/공백없음)
 static const char* EXPECTED_NFC_UID = "04AABBCCDDEEFF";
 
-static const char* CH = "debug0";
-static std::atomic_bool g_stop{ false };
+static const char* CH = "can0";
+static std::atomic_bool     g_stop{ false };
 
 // --- 경로 유틸: 실행 파일(라우터) 디렉토리 ---
 static std::filesystem::path get_self_dir(const char* argv0) {
@@ -64,7 +64,7 @@ static void send_rsp_byte(uint32_t canid, uint8_t code) {
 }
 
 static std::string bytes_to_hex(const uint8_t* d, size_t n) {
-    static const char* H = "0123456789ABCDEF";
+    static const char* H = "0123456789ABCD";
     std::string s; s.resize(n * 2);
     for (size_t i = 0; i < n; i++) {
         s[i * 2 + 0] = H[(d[i] >> 4) & 0xF];
@@ -183,24 +183,24 @@ int main(int argc, char** argv) {
 
     const auto baseDir = get_self_dir(argv[0]);
 
-    if (can_init(CAN_DEVICE_DEBUG) != CAN_OK) {   // 실버스면 CAN_DEVICE_LINUX
+    if (can_init(CAN_DEVICE_LINUX) != CAN_OK) {   // 실버스면 CAN_DEVICE_LINUX
         std::fprintf(stderr, "can_init failed\n");
         return 1;
     }
 
     CanConfig cfg{};
-    cfg.channel = 0;
-    cfg.bitrate = 500000;
+    cfg.channel     = 0;
+    cfg.bitrate     = 500000;
     cfg.samplePoint = 0.875f;
-    cfg.sjw = 1;
-    cfg.mode = CAN_MODE_LOOPBACK;         // 실버스면 NORMAL
+    cfg.sjw         = 1;
+    cfg.mode        = CAN_MODE_NORMAL;
 
     if (can_open(CH, cfg) != CAN_OK) {
         std::fprintf(stderr, "can_open failed\n");
         return 1;
     }
 
-    // 전체 구독 후 ID 분기(필요하면 마스크 좁혀도 됨)
+    // 전체 구독 후 ID 분기(필요하면 마스크 좁혀도 됨)    
     CanFilter any{};
     any.type = CAN_FILTER_MASK;
     any.data.mask.id = 0x000;
