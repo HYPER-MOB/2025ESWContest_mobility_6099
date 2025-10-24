@@ -1,17 +1,25 @@
 #pragma once
-#include <atomic>
 #include <string>
-#include "can_ids.hpp"
-#include "tcu_store.hpp"
+#include <array>
+#include "can_api.hpp"     // CanFrame, can_send, can_recv 사용
+#include "nfc_reader.hpp"  // NFC 내장
+#include "sca_ble_peripheral.hpp" // BLE 내장
 
-struct SeqContext {
-	std::atomic<AuthStep> step{ AuthStep::Idle };
-	std::atomic<AuthFlag> flag{ AuthFlag::OK };
-	std::string nfc_uid_read;
-	bool ble_ok = false;
-	std::string user_id;     // 카메라 단계에서 식별된 사용자 ID (없으면 기본값)
+class Sequencer {
+public:
+	void start();
+	void stop();
+
+	// CAN 수신부가 그대로 호출
+	void on_can_frame(const CanFrame& f);
+
+private:
+	// 내부 핸들러
+	void handle_ble_req(const CanFrame& f);
+	void handle_nfc_req(const CanFrame& f);
+
+	// 설정 (원하면 tcu_store 등으로 빼도 됨)
+	std::string expected_nfc_uid_ = "04AABBCCDDEEFF";
+	std::string adv_name_ = "SCA-CAR";
+	int         ble_timeout_ = 60;
 };
-
-bool run_nfc(SeqContext& ctx, const TcuProvided& tcu);
-bool run_ble(SeqContext& ctx, const TcuProvided& tcu);
-bool run_camera(SeqContext& ctx);

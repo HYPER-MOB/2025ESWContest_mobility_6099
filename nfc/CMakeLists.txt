@@ -1,12 +1,11 @@
-add_library(nfclib
+# NFC 내장 라이브러리
+add_library(sca_nfc
   nfc_reader.cpp
 )
-target_include_directories(nfclib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/include)
 
-# libnfc 필수
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBNFC REQUIRED libnfc)
-target_include_directories(nfclib PRIVATE ${LIBNFC_INCLUDE_DIRS})
-target_link_libraries(nfclib PRIVATE ${LIBNFC_LIBRARIES})
-target_compile_options(nfclib PRIVATE ${LIBNFC_CFLAGS_OTHER})
-target_compile_definitions(nfclib PRIVATE USE_LIBNFC)
+target_include_directories(sca_nfc PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${LIBNFC_INCLUDE_DIRS}
+)
+
+target_link_libraries(sca_nfc PUBLIC ${LIBNFC_LIBRARIES})
