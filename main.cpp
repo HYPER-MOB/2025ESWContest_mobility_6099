@@ -29,24 +29,21 @@ static constexpr uint32_t ID_POW_MIRROR_STATE = 0x202; // DLC 7
 static constexpr uint32_t ID_POW_WHEEL_STATE  = 0x203; // DLC 3
 
 // SCA/TCU 영역 (인증/프로필) (can0 TX/RX)
-static constexpr uint32_t ID_DCU_SCA_USER_FACE_REQ       = 0x001; // DLC 1
-static constexpr uint32_t ID_SCA_TCU_USER_INFO_REQ       = 0x002; // DLC 1
-static constexpr uint32_t ID_SCA_DCU_AUTH_STATE          = 0x003; // DLC 2
-static constexpr uint32_t ID_TCU_SCA_USER_INFO           = 0x004; // DLC 8 (미정)
-static constexpr uint32_t ID_SCA_DCU_AUTH_RESULT         = 0x005; // DLC 8
-static constexpr uint32_t ID_SCA_DCU_AUTH_RESULT_ADD     = 0x006; // DLC 8
-static constexpr uint32_t ID_TCU_SCA_USER_INFO_NFC       = 0x007; // DLC 8
-static constexpr uint32_t ID_TCU_SCA_USER_INFO_BLE       = 0x008; // DLC ? (미정)
-static constexpr uint32_t ID_SCA_TCU_USER_INFO_ACK       = 0x014; // DLC 2
-static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_REQ    = 0x011; // DLC 1
-static constexpr uint32_t ID_TCU_DCU_USER_PROFILE_SEAT   = 0x051; // DLC 4
-static constexpr uint32_t ID_TCU_DCU_USER_PROFILE_MIRROR = 0x052; // DLC 6
-static constexpr uint32_t ID_TCU_DCU_USER_PROFILE_WHEEL  = 0x053; // DLC 2
-static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_ACK    = 0x055; // DLC 2
-static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_SEAT_UPDATE   = 0x061; // DLC4
-static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_MIRROR_UPDATE = 0x062; // DLC6
-static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_WHEEL_UPDATE  = 0x063; // DLC2
-static constexpr uint32_t ID_TCU_DCU_USER_PROFILE_UPDATE_ACK    = 0x065; // DLC2
+static constexpr uint32_t ID_DCU_RESET       = 0x001; // DLC 1
+static constexpr uint32_t ID_DCU_RESET_ACK       = 0x002; // DLC 2
+static constexpr uint32_t ID_DCU_SCA_USER_FACE_REQ       = 0x101; // DLC 1
+static constexpr uint32_t ID_SCA_DCU_AUTH_STATE          = 0x103; // DLC 2
+static constexpr uint32_t ID_SCA_DCU_AUTH_RESULT         = 0x112; // DLC 8
+static constexpr uint32_t ID_SCA_DCU_AUTH_RESULT_ADD     = 0x113; // DLC 8
+static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_REQ    = 0x201; // DLC 1
+static constexpr uint32_t ID_TCU_DCU_USER_PROFILE_SEAT   = 0x202; // DLC 4
+static constexpr uint32_t ID_TCU_DCU_USER_PROFILE_MIRROR = 0x203; // DLC 6
+static constexpr uint32_t ID_TCU_DCU_USER_PROFILE_WHEEL  = 0x204; // DLC 2
+static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_ACK    = 0x205; // DLC 2
+static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_SEAT_UPDATE   = 0x206; // DLC4
+static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_MIRROR_UPDATE = 0x207; // DLC6
+static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_WHEEL_UPDATE  = 0x208; // DLC2
+static constexpr uint32_t ID_TCU_DCU_USER_PROFILE_UPDATE_ACK    = 0x209; // DLC2
 
 // ── 내부 상태(IPC <-> CAN 공유 변수) ─────────────────────────────────────────
 static int m_seatPosition     = 20;   // 0~100 (%)
@@ -103,6 +100,15 @@ static void sendSystemStart(IpcConnection* c, const QString& reqId = {}) {
         {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)}
     }});
 }
+static void sendSystemReset(IpcConnection* c, const QString& reason = {}, const QString& reqId = {}) {
+    if (!c) return;
+    c->send({"system/reset", reqId, QJsonObject{
+        {"reason", reason},
+        {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)}
+    }});
+}
+
+
 static void sendSystemWarning(IpcConnection* c, const QString& code, const QString& msg, const QString& reqId = {}) {
     if (!c) return;
     c->send({"system/warning", reqId, QJsonObject{{"code", code}, {"message", msg}}});
@@ -273,6 +279,22 @@ static void CAN_Tx_USER_PROFILE_WHEEL_UPDATE() {
             << "dlc=" << f.dlc << "data=[" << bytesToHex(f.data, f.dlc) << "]";
     can_send("can0", f, 0);
 }
+
+// ── CAN TX: RESET (추가) ─────────────────────────────────────────────────────
+static void CAN_Tx_RESET_on(const char* bus) {
+    CanFrame f = mkFrame(ID_DCU_RESET, 1);
+    f.data[0] = 1; // 트리거
+    qInfo() << "[" << bus << " TX] SYSTEM_RESET id=0x"
+            << QString::number(f.id,16).toUpper()
+            << "dlc=" << f.dlc << "data=[" << bytesToHex(f.data, f.dlc) << "]";
+    can_send(bus, f, 0);
+}
+
+static void CAN_Tx_RESET_BOTH() {
+    CAN_Tx_RESET_on("can0");
+    CAN_Tx_RESET_on("can1");
+}
+
 
 // ── CAN RX (버스 구분은 ID로 충분하여 공용 콜백 사용) ───────────────────────
 static void onCanRx(const CanFrame* fr, void* user) {
@@ -536,7 +558,7 @@ int main(int argc, char** argv) {
     });
 
     server.addHandler("system/hello", [](const IpcMessage& m, IpcConnection* c){
-        sendSystemStart(c, m.reqId);
+       //sendSystemStart(c, m.reqId);
     });
 
     server.addHandler("connect", [](const IpcMessage& m, IpcConnection* c){
@@ -628,6 +650,13 @@ server.addHandler("user/update", [](const IpcMessage& m, IpcConnection* c){
         char ch = 0; if (::read(STDIN_FILENO, &ch, 1) <= 0) return;
         if (!g_conn) { qWarning() << "No active IPC connection yet."; return; }
         if (ch=='a' || ch=='A') { sendSystemStart(g_conn, "req-a"); }
+        else if (ch=='b' || ch=='B') {
+        // 🔹 IPC로 system/reset 송신
+        sendSystemReset(g_conn, "manual-keypress");
+
+        // 🔹 CAN0/1 모두 RESET 프레임 송신
+        CAN_Tx_RESET_BOTH();
+    }
     });
 
     const int rc = app.exec();
