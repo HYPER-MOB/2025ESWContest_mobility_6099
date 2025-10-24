@@ -42,6 +42,10 @@ private:
     IpcClient* m_ipc = nullptr;
     bool m_bStart = false;
 
+    void teardownPages();        // 기존 페이지/리소스 정리
+    void createIntroIfNeeded();  // 인트로 페이지/라벨 재구성
+    void rebuildPages();         // Auth/Data/Main 페이지 재생성 + 시그널 재연결
+    void startFromIntro();       // 전체 초기화 후 인트로부터 시작
     void showIntroSequence();  // 인트로 실행
 };
 #endif // MAINWINDOW_H
