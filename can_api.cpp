@@ -4,8 +4,8 @@
 
 // 백엔드 C 헤더라면 이렇게 감싸기
 extern "C" {
-#include "channel.h"
-#include "adapter.h"
+#include "channel.hpp"
+#include "adapter.hpp"
 }
 #include <stdbool.h>
 
