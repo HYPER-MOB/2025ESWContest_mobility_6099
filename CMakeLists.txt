@@ -58,3 +58,20 @@ target_link_libraries(rpi_can_router
   PRIVATE can_core sca_ble sca_nfc
           ${GLIB_LIBRARIES} ${LIBNFC_LIBRARIES}
 )
+target_sources(rpi_can_router
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/nfc/nfc_adapter.cpp
+        ${CMAKE_SOURCE_DIR}/ble/ble_adapter.cpp
+        ${CMAKE_SOURCE_DIR}/src/sequencer.cpp
+        ${CMAKE_SOURCE_DIR}/nfc/nfc_reader.cpp
+        ${CMAKE_SOURCE_DIR}/ble/sca_ble_peripheral.cpp
+)
+# 인클루드 경로
+target_include_directories(rpi_can_router
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/nfc
+        ${CMAKE_SOURCE_DIR}/ble
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/include  # can_api.hpp, canmessage.hpp 등
+)

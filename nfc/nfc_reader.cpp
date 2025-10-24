@@ -7,7 +7,12 @@
 extern "C" {
 #include <nfc/nfc.h>
 }
+#include <array>
+extern bool nfc_read_uid(uint8_t* out, int len, int timeout);
 
+bool nfc_poll_uid(std::array<uint8_t,8>& out, int timeout_s){
+    return nfc_read_uid(out.data(), 8, timeout_s);
+}
 static const nfc_modulation kMods[] = {
     { NMT_ISO14443A, NBR_106 },
     { NMT_FELICA,    NBR_212 },

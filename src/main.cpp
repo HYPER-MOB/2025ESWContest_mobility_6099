@@ -1,73 +1,62 @@
 #include <cstdio>
-#include <cstdlib>
-#include <cstdint>
-#include <cstring>
 #include <thread>
 #include <chrono>
-#include <atomic>
 
+// 네가 가진 C++ 래퍼 헤더
 #include "can_api.hpp"
-#include "can_ids.hpp"
+
 #include "sequencer.hpp"
 
-// can_api가 쓰는 프레임 정의에 맞춰 래핑
-struct CanFrame {
-    uint32_t id = 0;
-    uint8_t  dlc = 0;
-    uint8_t  data[8] = { 0 };
-};
-
-// 수신 콜백
+// CAN 콜백: 모든 프레임을 sequencer로 전달
 static Sequencer* g_seq = nullptr;
 
-static void on_rx_cb(const CanFrame* f, void* /*user*/) {
-    if (!g_seq) return;
-    g_seq->on_can_rx(*f);
+// 기존 can_api.hpp의 콜백 시그니처에 맞춰 작성
+static void on_rx_cb(const CanFrame* f, void* user) {
+    (void)user;
+    if (g_seq && f) g_seq->on_can_rx(*f);
 }
 
 int main() {
-    const char* CH = "debug0";  // 실제 라즈베리: "can0"로 바꿔도 됨
-
-    // CAN 초기화/오픈
+    // ===== CAN 초기화/오픈 =====
     if (can_init(CAN_DEVICE_DEBUG) != CAN_OK) {
         std::fprintf(stderr, "can_init failed\n");
         return 1;
     }
-    CanConfig cfg = { .channel = 0, .bitrate = 500000, .samplePoint = 0.875f, .sjw = 1, .mode = CAN_MODE_NORMAL };
+    CanConfig cfg { .channel=0, .bitrate=500000, .samplePoint=0.875f, .sjw=1, .mode=CAN_MODE_NORMAL };
+    const char* CH = "debug0";
     if (can_open(CH, cfg) != CAN_OK) {
         std::fprintf(stderr, "can_open failed\n");
         return 1;
     }
 
-    // 모든 프레임 구독 (필터=전체)
+    // 모든 프레임 구독(마스크 전체 0)
     CanFilter any = { .type = CAN_FILTER_MASK };
     any.data.mask.id = 0; any.data.mask.mask = 0;
-    if (can_subscribe(CH, any, (can_rx_cb_t)on_rx_cb, nullptr) <= 0) {
+    if (can_subscribe(CH, any, on_rx_cb, nullptr) <= 0) {
         std::fprintf(stderr, "can_subscribe failed\n");
         return 1;
     }
 
-    // 시퀀서
+    // ===== Sequencer 구성 =====
     SequencerConfig scfg;
-    scfg.can_channel = CH;
-    scfg.can_bitrate = 500000;
-    scfg.ble_local_name = "SCA-CAR";
-    scfg.ble_timeout_s = 30;
-    scfg.nfc_timeout_s = 5;
-    scfg.ble_token_fallback = "ACCESS";
+    scfg.can_channel     = CH;
+    scfg.can_bitrate     = 500000;
+    scfg.ble_local_name  = "SCA-CAR";
+    scfg.ble_timeout_s   = 30;
+    scfg.nfc_timeout_s   = 5;
+    scfg.ble_uuid_last12 = "A1B2C3D4E5F6"; // 필요시 정책에 맞게 변경
 
     Sequencer seq(scfg);
     g_seq = &seq;
 
-    std::puts("[router] waiting for DCU_SCA_USER_FACE_REQ(0x101) ...");
+    std::puts("[main] Waiting for DCU_SCA_USER_FACE_REQ(0x101) ...");
 
-    // 메인 루프: 거의 빈 폴링 + 시퀀서 tick (블로킹 없이)
+    // 메인 루프: tick() 호출로 상태 진행
     while (true) {
         seq.tick();
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50)); // 20Hz
     }
 
-    // 도달 안 함
-    // can_dispose();
+    // can_dispose(); // 도달하지 않음
     // return 0;
 }
