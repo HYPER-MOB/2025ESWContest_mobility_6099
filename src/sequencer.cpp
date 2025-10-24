@@ -16,6 +16,7 @@ void Sequencer::stop() {
 }
 
 void Sequencer::on_can_frame(const CanFrame& f) {
+    
     if (f.id == ID_REQ_BLE) {
         handle_ble_req(f);
     }
@@ -62,6 +63,7 @@ void Sequencer::handle_ble_req(const CanFrame& f) {
 void Sequencer::handle_nfc_req(const CanFrame&) {
     sca::NfcConfig cfg; cfg.poll_seconds = 5;
     sca::NfcResult nr;
+
     bool read_ok = sca::nfc_poll_once(cfg, nr);
     bool match = (read_ok && !nr.uid_hex.empty() && nr.uid_hex == expected_nfc_uid_);
 
