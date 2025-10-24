@@ -20,13 +20,13 @@ static QPointer<IpcConnection> g_conn;
 
 // ── 메시지 ID (표 기준) ──────────────────────────────────────────────────────
 // Body CAN (DCU -> Power*)
-static constexpr uint32_t ID_DCU_SEAT_ORDER   = 0x001; // DLC 4 (→ can1 TX)
-static constexpr uint32_t ID_DCU_MIRROR_ORDER = 0x002; // DLC 6 (→ can1 TX)
-static constexpr uint32_t ID_DCU_WHEEL_ORDER  = 0x003; // DLC 2 (→ can1 TX)
+static constexpr uint32_t ID_DCU_SEAT_ORDER   = 0x101; // DLC 4 (→ can1 TX)
+static constexpr uint32_t ID_DCU_MIRROR_ORDER = 0x102; // DLC 6 (→ can1 TX)
+static constexpr uint32_t ID_DCU_WHEEL_ORDER  = 0x103; // DLC 2 (→ can1 TX)
 // Power* -> DCU (20ms) (← can1 RX)
-static constexpr uint32_t ID_POW_SEAT_STATE   = 0x100; // DLC 5(+flags)
-static constexpr uint32_t ID_POW_MIRROR_STATE = 0x200; // DLC 7
-static constexpr uint32_t ID_POW_WHEEL_STATE  = 0x300; // DLC 3
+static constexpr uint32_t ID_POW_SEAT_STATE   = 0x201; // DLC 5(+flags)
+static constexpr uint32_t ID_POW_MIRROR_STATE = 0x202; // DLC 7
+static constexpr uint32_t ID_POW_WHEEL_STATE  = 0x203; // DLC 3
 
 // SCA/TCU 영역 (인증/프로필) (can0 TX/RX)
 static constexpr uint32_t ID_DCU_SCA_USER_FACE_REQ       = 0x001; // DLC 1
@@ -147,6 +147,41 @@ static void sendPowerState(IpcConnection* c) {
     c->send({"power/state", {}, data});
 }
 
+static void sendSeatState(IpcConnection* c) {
+    if (!c) return;
+    QJsonObject data{
+        {"seatPosition", m_seatPosition},
+        {"seatAngle", m_seatAngle},
+        {"seatFrontHeight", m_seatFrontHeight},
+        {"seatRearHeight", m_seatRearHeight}
+    };
+    c->send({"state/seat", {}, data});
+}
+
+static void sendMirrorState(IpcConnection* c) {
+    if (!c) return;
+    QJsonObject data{
+        {"sideMirrorLeftYaw", m_sideMirrorLeftYaw},
+        {"sideMirrorLeftPitch", m_sideMirrorLeftPitch},
+        {"sideMirrorRightYaw", m_sideMirrorRightYaw},
+        {"sideMirrorRightPitch", m_sideMirrorRightPitch},
+        {"roomMirrorYaw", m_roomMirrorYaw},
+        {"roomMirrorPitch", m_roomMirrorPitch}
+    };
+    c->send({"state/mirror", {}, data});
+}
+
+static void sendWheelState(IpcConnection* c) {
+    if (!c) return;
+    QJsonObject data{
+        {"handlePosition", m_handlePosition},
+        {"handleAngle", m_handleAngle}
+    };
+    c->send({"state/wheel", {}, data});
+}
+
+
+
 // ── CAN TX (경로 분리) ──────────────────────────────────────────────────────
 static inline CanFrame mkFrame(uint32_t id, uint8_t dlc) {
     CanFrame f{}; f.id = id; f.dlc = dlc; f.flags = 0; memset(f.data, 0, 8); return f;
@@ -252,40 +287,57 @@ static void onCanRx(const CanFrame* fr, void* user) {
         return; // 좌석 상태 등 기존 분기 타지 않도록 조기 종료
     }
     // 좌석 상태 (can1)
-    if (fr->id == ID_POW_SEAT_STATE && fr->dlc >= 4) {
-        qInfo() << "[CAN1 RX] SEAT_STATE  id=0x" << QString::number(fr->id,16).toUpper()
-                << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
-        m_seatPosition    = fr->data[0];
-        m_seatAngle       = fr->data[1];
-        m_seatFrontHeight = fr->data[2];
-        m_seatRearHeight  = fr->data[3];
-        if (g_conn) QMetaObject::invokeMethod(g_conn, []{ sendPowerState(g_conn); }, Qt::QueuedConnection);
-        return;
-    }
+if (fr->id == ID_POW_SEAT_STATE && fr->dlc >= 4) {
+    qInfo() << "[CAN1 RX] SEAT_STATE  id=0x" << QString::number(fr->id,16).toUpper()
+            << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
+    m_seatPosition    = fr->data[0];
+    m_seatAngle       = fr->data[1];
+    m_seatFrontHeight = fr->data[2];
+    m_seatRearHeight  = fr->data[3];
 
-    // 미러 상태 (can1)
-    if (fr->id == ID_POW_MIRROR_STATE && fr->dlc >= 6) {
-        qInfo() << "[CAN1 RX] MIRROR_STATE id=0x" << QString::number(fr->id,16).toUpper()
-                << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
-        m_sideMirrorLeftYaw    = decAngle180_toSigned(fr->data[0], 90);
-        m_sideMirrorLeftPitch  = decAngle180_toSigned(fr->data[1], 90);
-        m_sideMirrorRightYaw   = decAngle180_toSigned(fr->data[2], 90);
-        m_sideMirrorRightPitch = decAngle180_toSigned(fr->data[3], 90);
-        m_roomMirrorYaw        = decAngle180_toSigned(fr->data[4], 90);
-        m_roomMirrorPitch      = decAngle180_toSigned(fr->data[5], 90);
-        if (g_conn) QMetaObject::invokeMethod(g_conn, []{ sendPowerState(g_conn); }, Qt::QueuedConnection);
-        return;
+    if (g_conn) {
+        QMetaObject::invokeMethod(g_conn, []{
+            // 전체 + 좌석 개별
+            sendSeatState(g_conn);
+        }, Qt::QueuedConnection);
     }
+    return;
+}
 
-    // 핸들 상태 (can1)
-    if (fr->id == ID_POW_WHEEL_STATE && fr->dlc >= 2) {
-        qInfo() << "[CAN1 RX] WHEEL_STATE id=0x" << QString::number(fr->id,16).toUpper()
-                << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
-        m_handlePosition = fr->data[0];
-        m_handleAngle    = decAngle180_toSigned(fr->data[1], 90);
-        if (g_conn) QMetaObject::invokeMethod(g_conn, []{ sendPowerState(g_conn); }, Qt::QueuedConnection);
-        return;
+// 미러 상태 (can1)
+if (fr->id == ID_POW_MIRROR_STATE && fr->dlc >= 6) {
+    qInfo() << "[CAN1 RX] MIRROR_STATE id=0x" << QString::number(fr->id,16).toUpper()
+            << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
+    m_sideMirrorLeftYaw    = decAngle180_toSigned(fr->data[0], 90);
+    m_sideMirrorLeftPitch  = decAngle180_toSigned(fr->data[1], 90);
+    m_sideMirrorRightYaw   = decAngle180_toSigned(fr->data[2], 90);
+    m_sideMirrorRightPitch = decAngle180_toSigned(fr->data[3], 90);
+    m_roomMirrorYaw        = decAngle180_toSigned(fr->data[4], 90);
+    m_roomMirrorPitch      = decAngle180_toSigned(fr->data[5], 90);
+
+    if (g_conn) {
+        QMetaObject::invokeMethod(g_conn, []{
+            sendMirrorState(g_conn);
+        }, Qt::QueuedConnection);
     }
+    return;
+}
+
+// 핸들 상태 (can1)
+if (fr->id == ID_POW_WHEEL_STATE && fr->dlc >= 2) {
+    qInfo() << "[CAN1 RX] WHEEL_STATE id=0x" << QString::number(fr->id,16).toUpper()
+            << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
+    m_handlePosition = fr->data[0];
+    m_handleAngle    = decAngle180_toSigned(fr->data[1], 90);
+
+    if (g_conn) {
+        QMetaObject::invokeMethod(g_conn, []{
+            sendWheelState(g_conn);
+        }, Qt::QueuedConnection);
+    }
+    return;
+}
+
 
     // 인증 단계 상태 (can0)
     if (fr->id == ID_SCA_DCU_AUTH_STATE && fr->dlc >= 2) {
@@ -494,61 +546,71 @@ int main(int argc, char** argv) {
         }});
     });
 
-    // UI → 현재 차량 제어 적용 (Power* 오더는 can1)
-    server.addHandler("power/apply", [](const IpcMessage& m, IpcConnection* c) {
-        const QJsonObject& p = m.payload;
-        if (p.contains("seatPosition"))     m_seatPosition = clampInt(p.value("seatPosition").toInt(), 0, 100);
-        if (p.contains("seatAngle"))        m_seatAngle = clampInt(p.value("seatAngle").toInt(), 0, 180);
-        if (p.contains("seatFrontHeight"))  m_seatFrontHeight = clampInt(p.value("seatFrontHeight").toInt(), 0, 100);
-        if (p.contains("seatRearHeight"))   m_seatRearHeight = clampInt(p.value("seatRearHeight").toInt(), 0, 100);
+	server.addHandler("power/apply", [](const IpcMessage& m, IpcConnection* c) {
+	    const QJsonObject& p = m.payload;
 
-        if (p.contains("sideMirrorLeftYaw"))    m_sideMirrorLeftYaw = clampInt(p.value("sideMirrorLeftYaw").toInt(), -45, 45);
-        if (p.contains("sideMirrorLeftPitch"))  m_sideMirrorLeftPitch = clampInt(p.value("sideMirrorLeftPitch").toInt(), -45, 45);
-        if (p.contains("sideMirrorRightYaw"))   m_sideMirrorRightYaw = clampInt(p.value("sideMirrorRightYaw").toInt(), -45, 45);
-        if (p.contains("sideMirrorRightPitch")) m_sideMirrorRightPitch = clampInt(p.value("sideMirrorRightPitch").toInt(), -45, 45);
-        if (p.contains("roomMirrorYaw"))        m_roomMirrorYaw = clampInt(p.value("roomMirrorYaw").toInt(), -45, 45);
-        if (p.contains("roomMirrorPitch"))      m_roomMirrorPitch = clampInt(p.value("roomMirrorPitch").toInt(), -45, 45);
+	    bool seatChanged   = false;
+	    bool mirrorChanged = false;
+	    bool wheelChanged  = false;
 
-        if (p.contains("handlePosition"))   m_handlePosition = clampInt(p.value("handlePosition").toInt(), 0, 100);
-        if (p.contains("handleAngle"))      m_handleAngle = clampInt(p.value("handleAngle").toInt(), -90, 90);
+	    // Seat
+	    if (p.contains("seatPosition"))    { m_seatPosition     = clampInt(p.value("seatPosition").toInt(), 0, 100); seatChanged = true; }
+	    if (p.contains("seatAngle"))       { m_seatAngle        = clampInt(p.value("seatAngle").toInt(), 0, 180);    seatChanged = true; }
+	    if (p.contains("seatFrontHeight")) { m_seatFrontHeight  = clampInt(p.value("seatFrontHeight").toInt(), 0, 100); seatChanged = true; }
+	    if (p.contains("seatRearHeight"))  { m_seatRearHeight   = clampInt(p.value("seatRearHeight").toInt(), 0, 100); seatChanged = true; }
 
-        // → Power* 오더는 can1
-        CAN_Tx_SEAT_ORDER();
-        CAN_Tx_MIRROR_ORDER();
-        CAN_Tx_WHEEL_ORDER();
+	    // Mirrors (UI -45~45)
+	    if (p.contains("sideMirrorLeftYaw"))    { m_sideMirrorLeftYaw    = clampInt(p.value("sideMirrorLeftYaw").toInt(), -45, 45); mirrorChanged = true; }
+	    if (p.contains("sideMirrorLeftPitch"))  { m_sideMirrorLeftPitch  = clampInt(p.value("sideMirrorLeftPitch").toInt(), -45, 45); mirrorChanged = true; }
+	    if (p.contains("sideMirrorRightYaw"))   { m_sideMirrorRightYaw   = clampInt(p.value("sideMirrorRightYaw").toInt(), -45, 45); mirrorChanged = true; }
+	    if (p.contains("sideMirrorRightPitch")) { m_sideMirrorRightPitch = clampInt(p.value("sideMirrorRightPitch").toInt(), -45, 45); mirrorChanged = true; }
+	    if (p.contains("roomMirrorYaw"))        { m_roomMirrorYaw        = clampInt(p.value("roomMirrorYaw").toInt(), -45, 45); mirrorChanged = true; }
+	    if (p.contains("roomMirrorPitch"))      { m_roomMirrorPitch      = clampInt(p.value("roomMirrorPitch").toInt(), -45, 45); mirrorChanged = true; }
 
-        QTimer::singleShot(200, c, [c, reqId=m.reqId]{ sendPowerApplyAck(c, true, reqId); });
-    });
+	    // Wheel
+	    if (p.contains("handlePosition"))  { m_handlePosition = clampInt(p.value("handlePosition").toInt(), 0, 100); wheelChanged = true; }
+	    if (p.contains("handleAngle"))     { m_handleAngle    = clampInt(p.value("handleAngle").toInt(), -90, 90);  wheelChanged = true; }
+
+	    if (seatChanged)   CAN_Tx_SEAT_ORDER();
+	    if (mirrorChanged) CAN_Tx_MIRROR_ORDER();
+	    if (wheelChanged)  CAN_Tx_WHEEL_ORDER();
+
+	    QTimer::singleShot(200, c, [c, reqId=m.reqId]{ sendPowerApplyAck(c, true, reqId); });
+	});
 
     // UI → 사용자 프로필 업데이트 (TCU 쪽: can0)
-    server.addHandler("user/update", [](const IpcMessage& m, IpcConnection* c){
-        const QJsonObject& p = m.payload;
+server.addHandler("user/update", [](const IpcMessage& m, IpcConnection* c){
+    const QJsonObject& p = m.payload;
 
-        // Seat
-        if (p.contains("seatPosition"))     m_seatPosition = clampInt(p.value("seatPosition").toInt(), 0, 100);
-        if (p.contains("seatAngle"))        m_seatAngle = clampInt(p.value("seatAngle").toInt(), 0, 180);
-        if (p.contains("seatFrontHeight"))  m_seatFrontHeight = clampInt(p.value("seatFrontHeight").toInt(), 0, 100);
-        if (p.contains("seatRearHeight"))   m_seatRearHeight = clampInt(p.value("seatRearHeight").toInt(), 0, 100);
+    bool seatChanged   = false;
+    bool mirrorChanged = false;
+    bool wheelChanged  = false;
 
-        // Mirrors
-        if (p.contains("sideMirrorLeftYaw"))    m_sideMirrorLeftYaw = clampInt(p.value("sideMirrorLeftYaw").toInt(), -45, 45);
-        if (p.contains("sideMirrorLeftPitch"))  m_sideMirrorLeftPitch = clampInt(p.value("sideMirrorLeftPitch").toInt(), -45, 45);
-        if (p.contains("sideMirrorRightYaw"))   m_sideMirrorRightYaw = clampInt(p.value("sideMirrorRightYaw").toInt(), -45, 45);
-        if (p.contains("sideMirrorRightPitch")) m_sideMirrorRightPitch = clampInt(p.value("sideMirrorRightPitch").toInt(), -45, 45);
-        if (p.contains("roomMirrorYaw"))        m_roomMirrorYaw = clampInt(p.value("roomMirrorYaw").toInt(), -45, 45);
-        if (p.contains("roomMirrorPitch"))      m_roomMirrorPitch = clampInt(p.value("roomMirrorPitch").toInt(), -45, 45);
+    // Seat
+    if (p.contains("seatPosition"))    { m_seatPosition     = clampInt(p.value("seatPosition").toInt(), 0, 100); seatChanged = true; }
+    if (p.contains("seatAngle"))       { m_seatAngle        = clampInt(p.value("seatAngle").toInt(), 0, 180);    seatChanged = true; }
+    if (p.contains("seatFrontHeight")) { m_seatFrontHeight  = clampInt(p.value("seatFrontHeight").toInt(), 0, 100); seatChanged = true; }
+    if (p.contains("seatRearHeight"))  { m_seatRearHeight   = clampInt(p.value("seatRearHeight").toInt(), 0, 100); seatChanged = true; }
 
-        // Wheel
-        if (p.contains("handlePosition"))   m_handlePosition = clampInt(p.value("handlePosition").toInt(), 0, 100);
-        if (p.contains("handleAngle"))      m_handleAngle = clampInt(p.value("handleAngle").toInt(), -90, 90);
+    // Mirrors
+    if (p.contains("sideMirrorLeftYaw"))    { m_sideMirrorLeftYaw    = clampInt(p.value("sideMirrorLeftYaw").toInt(), -45, 45); mirrorChanged = true; }
+    if (p.contains("sideMirrorLeftPitch"))  { m_sideMirrorLeftPitch  = clampInt(p.value("sideMirrorLeftPitch").toInt(), -45, 45); mirrorChanged = true; }
+    if (p.contains("sideMirrorRightYaw"))   { m_sideMirrorRightYaw   = clampInt(p.value("sideMirrorRightYaw").toInt(), -45, 45); mirrorChanged = true; }
+    if (p.contains("sideMirrorRightPitch")) { m_sideMirrorRightPitch = clampInt(p.value("sideMirrorRightPitch").toInt(), -45, 45); mirrorChanged = true; }
+    if (p.contains("roomMirrorYaw"))        { m_roomMirrorYaw        = clampInt(p.value("roomMirrorYaw").toInt(), -45, 45); mirrorChanged = true; }
+    if (p.contains("roomMirrorPitch"))      { m_roomMirrorPitch      = clampInt(p.value("roomMirrorPitch").toInt(), -45, 45); mirrorChanged = true; }
 
-        // → 프로필 업데이트는 can0
-        CAN_Tx_USER_PROFILE_SEAT_UPDATE();
-        CAN_Tx_USER_PROFILE_MIRROR_UPDATE();
-        CAN_Tx_USER_PROFILE_WHEEL_UPDATE();
+    // Wheel
+    if (p.contains("handlePosition"))  { m_handlePosition = clampInt(p.value("handlePosition").toInt(), 0, 100); wheelChanged = true; }
+    if (p.contains("handleAngle"))     { m_handleAngle    = clampInt(p.value("handleAngle").toInt(), -90, 90);  wheelChanged = true; }
 
-        if (c) c->send({"user/update/sent", m.reqId, QJsonObject{{"ok", true}}});
-    });
+    if (seatChanged)   CAN_Tx_USER_PROFILE_SEAT_UPDATE();
+    if (mirrorChanged) CAN_Tx_USER_PROFILE_MIRROR_UPDATE();
+    if (wheelChanged)  CAN_Tx_USER_PROFILE_WHEEL_UPDATE();
+
+    if (c) c->send({"user/update/sent", m.reqId, QJsonObject{{"ok", true}}});
+});
+
 
     // 연결 상태 트래킹
     QObject::connect(&server, &IpcServer::clientConnected, [&](IpcConnection* c){
