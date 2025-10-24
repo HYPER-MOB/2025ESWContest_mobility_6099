@@ -3,6 +3,7 @@
 #include <thread>
 #include <iostream>
 #include <string>
+#include <cstdint>
 
 extern "C" {
 #include <nfc/nfc.h>
