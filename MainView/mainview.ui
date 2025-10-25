@@ -399,7 +399,7 @@ QWidget#pageSettings QPushButton:checked {
 
 QWidget#pageSettings QToolButton#btnUp,
 QWidget#pageSettings QToolButton#btnDown {
-  min-width: 44px; min-height: 100px;
+  min-width: 44px; min-height: 140px;
   border: 2px solid #8F8F8F;
   border-radius: 8px;
   background: #BDBDBD;
@@ -608,7 +608,7 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                          <property name="minimumSize">
                           <size>
                            <width>48</width>
-                           <height>104</height>
+                           <height>144</height>
                           </size>
                          </property>
                          <property name="text">
@@ -630,7 +630,7 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                          <property name="minimumSize">
                           <size>
                            <width>48</width>
-                           <height>104</height>
+                           <height>144</height>
                           </size>
                          </property>
                          <property name="text">
@@ -707,8 +707,8 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                           </property>
                           <property name="maximumSize">
                            <size>
-                            <width>300</width>
-                            <height>300</height>
+                            <width>200</width>
+                            <height>200</height>
                            </size>
                           </property>
                           <property name="text">
@@ -739,6 +739,17 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                        <layout class="QHBoxLayout" name="horizontalLayout_13">
                         <item>
                          <widget class="QPushButton" name="btnHandlePosition">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="font">
+                           <font>
+                            <pointsize>30</pointsize>
+                           </font>
+                          </property>
                           <property name="text">
                            <string>Position</string>
                           </property>
@@ -746,8 +757,19 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                         </item>
                         <item>
                          <widget class="QPushButton" name="btnHandleAngle">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="font">
+                           <font>
+                            <pointsize>30</pointsize>
+                           </font>
+                          </property>
                           <property name="text">
-                           <string>angle</string>
+                           <string>Angle</string>
                           </property>
                          </widget>
                         </item>
@@ -791,8 +813,8 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                          <widget class="QLabel" name="lblSideMirrorPic">
                           <property name="maximumSize">
                            <size>
-                            <width>300</width>
-                            <height>300</height>
+                            <width>200</width>
+                            <height>200</height>
                            </size>
                           </property>
                           <property name="text">
@@ -823,15 +845,37 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                        <layout class="QHBoxLayout" name="horizontalLayout_12">
                         <item>
                          <widget class="QPushButton" name="btnSideMirrorYaw">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="font">
+                           <font>
+                            <pointsize>30</pointsize>
+                           </font>
+                          </property>
                           <property name="text">
-                           <string>yaw</string>
+                           <string>Yaw</string>
                           </property>
                          </widget>
                         </item>
                         <item>
                          <widget class="QPushButton" name="btnSideMirrorPitch">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="font">
+                           <font>
+                            <pointsize>30</pointsize>
+                           </font>
+                          </property>
                           <property name="text">
-                           <string>pitch</string>
+                           <string>Pitch</string>
                           </property>
                          </widget>
                         </item>
@@ -907,8 +951,8 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                          <widget class="QLabel" name="lblSeattPic">
                           <property name="maximumSize">
                            <size>
-                            <width>300</width>
-                            <height>300</height>
+                            <width>200</width>
+                            <height>200</height>
                            </size>
                           </property>
                           <property name="text">
@@ -939,29 +983,73 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                        <layout class="QHBoxLayout" name="horizontalLayout_11">
                         <item>
                          <widget class="QPushButton" name="btnSeatPosition">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="font">
+                           <font>
+                            <pointsize>20</pointsize>
+                           </font>
+                          </property>
                           <property name="text">
-                           <string>position</string>
+                           <string>Position</string>
                           </property>
                          </widget>
                         </item>
                         <item>
                          <widget class="QPushButton" name="btnSeatAngle">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="font">
+                           <font>
+                            <pointsize>20</pointsize>
+                           </font>
+                          </property>
                           <property name="text">
-                           <string>angle</string>
+                           <string>Angle</string>
                           </property>
                          </widget>
                         </item>
                         <item>
                          <widget class="QPushButton" name="btnSeatFront">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="font">
+                           <font>
+                            <pointsize>20</pointsize>
+                           </font>
+                          </property>
                           <property name="text">
-                           <string>front</string>
+                           <string>Front</string>
                           </property>
                          </widget>
                         </item>
                         <item>
                          <widget class="QPushButton" name="btnSeatRear">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="font">
+                           <font>
+                            <pointsize>20</pointsize>
+                           </font>
+                          </property>
                           <property name="text">
-                           <string>rear</string>
+                           <string>Rear</string>
                           </property>
                          </widget>
                         </item>
@@ -1005,8 +1093,8 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                          <widget class="QLabel" name="lblRoomMirrorPic">
                           <property name="maximumSize">
                            <size>
-                            <width>300</width>
-                            <height>300</height>
+                            <width>200</width>
+                            <height>200</height>
                            </size>
                           </property>
                           <property name="text">
@@ -1037,15 +1125,37 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                        <layout class="QHBoxLayout" name="horizontalLayout_10">
                         <item>
                          <widget class="QPushButton" name="btnRoomMirrorYaw">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="font">
+                           <font>
+                            <pointsize>30</pointsize>
+                           </font>
+                          </property>
                           <property name="text">
-                           <string>YAW</string>
+                           <string>Yaw</string>
                           </property>
                          </widget>
                         </item>
                         <item>
                          <widget class="QPushButton" name="btnRoomMirrorPitch">
+                          <property name="sizePolicy">
+                           <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
+                            <horstretch>0</horstretch>
+                            <verstretch>0</verstretch>
+                           </sizepolicy>
+                          </property>
+                          <property name="font">
+                           <font>
+                            <pointsize>30</pointsize>
+                           </font>
+                          </property>
                           <property name="text">
-                           <string>PITCH</string>
+                           <string>Pitch</string>
                           </property>
                          </widget>
                         </item>
