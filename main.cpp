@@ -606,6 +606,10 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    QTimer::singleShot(100, []{
+        CAN_Tx_RESET_on("can1");
+    });
+
     // 버튼 주기 송신 타이머 시작 (항상 현재 상태 전송; 누르지 않으면 0 유지)
     g_btnTxTimer = new QTimer(&app);
     g_btnTxTimer->setTimerType(Qt::PreciseTimer);
