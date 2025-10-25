@@ -64,6 +64,8 @@ static int m_roomMirrorPitch = 0;    // -45~45
 static int m_handlePosition  = 0;    // 0~100
 static int m_handleAngle     = 0;    // -90~90
 
+int m_iSystemStart = 0;
+
 // 프로필 수신 완료 체크
 static bool g_profSeatOK = false;
 static bool g_profMirrorOK = false;
@@ -334,6 +336,7 @@ static void onCanRx(const CanFrame* fr, void* user) {
                 << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
         return; // 좌석 상태 등 기존 분기 타지 않도록 조기 종료
     }
+    
     // 좌석 상태 (can1)
     if (strcmp(bus, "can1") == 0 &&fr->id == ID_POW_SEAT_STATE && fr->dlc >= 4) {
         qInfo() << "[CAN1 RX] SEAT_STATE  id=0x" << QString::number(fr->id,16).toUpper()
@@ -342,6 +345,18 @@ static void onCanRx(const CanFrame* fr, void* user) {
         m_seatAngle       = fr->data[1];
         m_seatFrontHeight = fr->data[2];
         m_seatRearHeight  = fr->data[3];
+
+    // ── 5번째 '바이트'로 start 트리거 ──
+    if (fr->dlc >= 5) {
+        const uint8_t flagByte = fr->data[4];  // 5번째 바이트
+        if (flagByte == 0x01 && m_iSystemStart == 0) {
+            sendToAll([](IpcConnection* c){
+                // reqId 비움: 브로드캐스트성 알림
+                sendSystemStart(c, {});
+                m_iSystemStart = 1;
+            });
+        }
+    }
 
         if (hasClients()) {
             sendToAll([](IpcConnection* c){ sendSeatState(c); });
@@ -763,6 +778,7 @@ server.addHandler("tcu/drive", [](const IpcMessage& m, IpcConnection* c) {
         } else if (ch=='b' || ch=='B') {
             // 🔹 IPC로 system/reset 송신 (모든 클라)
             sendToAll([](IpcConnection* c){ sendSystemReset(c, "manual-keypress"); });
+            m_iSystemStart =0;
             // 🔹 CAN0/1 모두 RESET 프레임 송신
             CAN_Tx_RESET_BOTH();
         }
