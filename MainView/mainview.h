@@ -48,6 +48,8 @@ private:
     void highlightChecked(QButtonGroup* group);
 
     QJsonObject buildApplyPayload(const QJsonObject& extra = {}) const;
+    QString m_driveReqId;
+    void sendDriveCommand(bool start);
 
 private:
     Ui::MainView *ui = nullptr;

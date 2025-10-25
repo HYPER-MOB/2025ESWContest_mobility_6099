@@ -86,6 +86,10 @@ MainView::MainView(QWidget *parent)
         const int nextIndex = isSettings
                             ? stack->indexOf(ui->pageDashboard)
                             : stack->indexOf(ui->pageSettings);
+
+        sendDriveCommand(isSettings);
+
+        // 전환 애니메이션 실행
         fadeToPage(stack, nextIndex, 320);
     });
 
@@ -777,4 +781,16 @@ void MainView::onSaveClicked()
     const QByteArray compact = QJsonDocument(payload).toJson(QJsonDocument::Compact);
     qInfo() << "[user/update] sent reqId=" << m_updateReqId << compact;
 
+}
+
+void MainView::sendDriveCommand(bool start)
+{
+    if (!m_ipc) return;
+    QJsonObject payload{
+        {"state", start ? "drive" : "stop"},
+        {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
+        {"source", "ui"}
+    };
+    m_driveReqId = m_ipc->send("tcu/drive", payload);
+    qInfo() << "[tcu/drive] sent reqId=" << m_driveReqId << payload;
 }
