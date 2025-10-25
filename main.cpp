@@ -1,3 +1,4 @@
+// main.cpp
 #include <QtCore>
 #include "ipc.h"
 
@@ -9,10 +10,14 @@ extern "C" {
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <array>
+#include <algorithm>
+#include <functional>
+#include <cstring>
+
 // 콜백 user 구분용 라벨
 static const char* kBusCan0 = "can0";
 static const char* kBusCan1 = "can1";
-
 
 // ── 소켓 경로 ────────────────────────────────────────────────────────────────
 static const QString kSock = "/tmp/dcu.demo.sock";
@@ -33,7 +38,7 @@ static constexpr uint32_t ID_POW_WHEEL_STATE  = 0x203; // DLC 3
 // SCA/TCU 영역 (인증/프로필) (can0 TX/RX)
 static constexpr uint32_t ID_DCU_RESET                          = 0x001; // DLC 1
 static constexpr uint32_t ID_DCU_RESET_ACK                      = 0x002; // DLC 2
-static constexpr uint32_t ID_DCU_TCU_DRIVE_CMD = 0x005; // DLC 1  (drive:1, stop:0) 
+static constexpr uint32_t ID_DCU_TCU_DRIVE_CMD                  = 0x005; // DLC 1  (drive:1, stop:0)
 static constexpr uint32_t ID_DCU_SCA_USER_FACE_REQ              = 0x101; // DLC 1
 static constexpr uint32_t ID_SCA_DCU_AUTH_STATE                 = 0x103; // DLC 2
 static constexpr uint32_t ID_SCA_DCU_AUTH_RESULT                = 0x112; // DLC 8
@@ -47,8 +52,15 @@ static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_SEAT_UPDATE   = 0x206; // DLC4
 static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_MIRROR_UPDATE = 0x207; // DLC6
 static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_WHEEL_UPDATE  = 0x208; // DLC2
 static constexpr uint32_t ID_TCU_DCU_USER_PROFILE_UPDATE_ACK    = 0x209; // DLC2
-static constexpr uint32_t ID_CAN_SYSTEM_WARNING = 0x500; 
-static constexpr uint32_t ID_CAN_SYSTEM_START = 0x600; 
+
+static constexpr uint32_t ID_CAN_SYSTEM_WARNING = 0x500;
+static constexpr uint32_t ID_CAN_SYSTEM_START   = 0x600;
+
+// ── 버튼 메시지 상수 (주기 송신) ─────────────────────────────────────────────
+static constexpr int kBtnTxPeriodMs = 50; // 20Hz 기본
+static constexpr uint32_t ID_DCU_SEAT_BUTTON   = 0x301; // DLC 4
+static constexpr uint32_t ID_DCU_MIRROR_BUTTON = 0x302; // DLC 6
+static constexpr uint32_t ID_DCU_WHEEL_BUTTON  = 0x303; // DLC 2
 
 // ── 내부 상태(IPC <-> CAN 공유 변수) ─────────────────────────────────────────
 static int m_seatPosition     = 20;   // 0~100 (%)
@@ -75,6 +87,19 @@ static bool g_profWheelOK = false;
 static int g_canSubPowId = 0; // can1 (Power*)
 static int g_canSubScaId = 0; // can0 (SCA/TCU)
 
+// ── 전역에 추가(인증/프로필/유저) ───────────────────────────────────────────
+static QString g_lastAuthReqId;
+static QString g_lastDataReqId;
+static QByteArray g_accUserId;
+static QString g_currentUserId;
+
+// ── 버튼 상태 버퍼 및 타이머 ────────────────────────────────────────────────
+// (0: none, 1: +, 2: -)
+static std::array<uint8_t, 4> g_btnSeat   {{0,0,0,0}};       // pos, angle, front, rear
+static std::array<uint8_t, 6> g_btnMirror {{0,0,0,0,0,0}};   // L_yaw, L_pitch, R_yaw, R_pitch, room_yaw, room_pitch
+static std::array<uint8_t, 2> g_btnWheel  {{0,0}};           // pos, angle
+static QTimer* g_btnTxTimer = nullptr;
+
 // ── 유틸 ─────────────────────────────────────────────────────────────────────
 static inline int clampInt(int v, int lo, int hi) { return std::min(hi, std::max(lo, v)); }
 static inline uint8_t encPercent100(int v) { return (uint8_t)clampInt(v, 0, 100); }
@@ -84,14 +109,6 @@ static inline uint8_t encAngle180_fromSigned(int degSigned, int offset) {
 static inline int decAngle180_toSigned(uint8_t raw, int offset) {
     return clampInt((int)raw - offset, -offset, 180 - offset);
 }
-
-// ── 전역에 추가 ─────────────────────────────────────────
-static QString g_lastAuthReqId;
-static QString g_lastDataReqId;
-static QByteArray g_accUserId;
-
-static QString g_currentUserId;
-
 static inline QString bytesToHex(const uint8_t* d, int n) {
     QString s;
     for (int i = 0; i < n; ++i) {
@@ -108,7 +125,6 @@ static void sendToAll(const std::function<void(IpcConnection*)>& fn) {
         QMetaObject::invokeMethod(c, [c, fn]{ if (c) fn(c); }, Qt::QueuedConnection);
     }
 }
-
 static bool hasClients() { return !g_clients.isEmpty(); }
 
 // ── IPC 송신 ────────────────────────────────────────────────────────────────
@@ -126,7 +142,6 @@ static void sendSystemReset(IpcConnection* c, const QString& reason = {}, const 
         {"ts", QDateTime::currentDateTimeUtc().toString(Qt::ISODate)}
     }});
 }
-
 static void sendSystemWarning(IpcConnection* c, const QString& code, const QString& msg, const QString& reqId = {}) {
     if (!c) return;
     c->send({"system/warning", reqId, QJsonObject{{"code", code}, {"message", msg}}});
@@ -154,10 +169,6 @@ static void sendDataResult(IpcConnection* c, int error = 0, const QString& reqId
     };
     c->send({"data/result", reqId, QJsonObject{{"error", error},{"data", data}}});
 }
-static void sendPowerApplyAck(IpcConnection* c, bool ok, const QString& reqId = {}) {
-    if (!c) return;
-    c->send({"power/apply/ack", reqId, QJsonObject{{"ok", ok}}});
-}
 static void sendPowerState(IpcConnection* c) {
     if (!c) return;
     QJsonObject data{
@@ -170,7 +181,6 @@ static void sendPowerState(IpcConnection* c) {
     };
     c->send({"power/state", {}, data});
 }
-
 static void sendSeatState(IpcConnection* c) {
     if (!c) return;
     QJsonObject data{
@@ -181,7 +191,6 @@ static void sendSeatState(IpcConnection* c) {
     };
     c->send({"state/seat", {}, data});
 }
-
 static void sendMirrorState(IpcConnection* c) {
     if (!c) return;
     QJsonObject data{
@@ -194,7 +203,6 @@ static void sendMirrorState(IpcConnection* c) {
     };
     c->send({"state/mirror", {}, data});
 }
-
 static void sendWheelState(IpcConnection* c) {
     if (!c) return;
     QJsonObject data{
@@ -204,11 +212,9 @@ static void sendWheelState(IpcConnection* c) {
     c->send({"state/wheel", {}, data});
 }
 
-
-
-// ── CAN TX (경로 분리) ──────────────────────────────────────────────────────
+// ── CAN TX (공통) ───────────────────────────────────────────────────────────
 static inline CanFrame mkFrame(uint32_t id, uint8_t dlc) {
-    CanFrame f{}; f.id = id; f.dlc = dlc; f.flags = 0; memset(f.data, 0, 8); return f;
+    CanFrame f{}; f.id = id; f.dlc = dlc; f.flags = 0; std::memset(f.data, 0, 8); return f;
 }
 
 // → Power* 로 가는 오더는 can1
@@ -240,6 +246,29 @@ static void CAN_Tx_WHEEL_ORDER() {
     f.data[1] = encAngle180_fromSigned(m_handleAngle, 90);
     qInfo() << "[CAN1 TX] WHEEL_ORDER id=0x" << QString::number(f.id,16).toUpper()
             << "dlc=" << f.dlc << "data=[" << bytesToHex(f.data, f.dlc) << "]";
+    can_send("can1", f, 0);
+}
+
+// → 버튼 상태 주기 송신 (can1)
+static void CAN_Tx_SEAT_BUTTONS() {
+    CanFrame f = mkFrame(ID_DCU_SEAT_BUTTON, 4);
+    for (int i=0;i<4;++i) f.data[i] = g_btnSeat[i];
+    qInfo() << "[CAN1 TX] SEAT_BUTTON id=0x" << QString::number(f.id,16).toUpper()
+            << " dlc=" << f.dlc << " data=[" << bytesToHex(f.data, f.dlc) << "]";
+    can_send("can1", f, 0);
+}
+static void CAN_Tx_MIRROR_BUTTONS() {
+    CanFrame f = mkFrame(ID_DCU_MIRROR_BUTTON, 6);
+    for (int i=0;i<6;++i) f.data[i] = g_btnMirror[i];
+    qInfo() << "[CAN1 TX] MIRROR_BUTTON id=0x" << QString::number(f.id,16).toUpper()
+            << " dlc=" << f.dlc << " data=[" << bytesToHex(f.data, f.dlc) << "]";
+    can_send("can1", f, 0);
+}
+static void CAN_Tx_WHEEL_BUTTONS() {
+    CanFrame f = mkFrame(ID_DCU_WHEEL_BUTTON, 2);
+    for (int i=0;i<2;++i) f.data[i] = g_btnWheel[i];
+    qInfo() << "[CAN1 TX] WHEEL_BUTTON id=0x" << QString::number(f.id,16).toUpper()
+            << " dlc=" << f.dlc << " data=[" << bytesToHex(f.data, f.dlc) << "]";
     can_send("can1", f, 0);
 }
 
@@ -298,7 +327,7 @@ static void CAN_Tx_USER_PROFILE_WHEEL_UPDATE() {
     can_send("can0", f, 0);
 }
 
-// ── CAN TX: RESET (추가) ─────────────────────────────────────────────────────
+// ── CAN TX: RESET ───────────────────────────────────────────────────────────
 static void CAN_Tx_RESET_on(const char* bus) {
     CanFrame f = mkFrame(ID_DCU_RESET, 1);
     f.data[0] = 1; // 트리거
@@ -307,7 +336,6 @@ static void CAN_Tx_RESET_on(const char* bus) {
             << "dlc=" << f.dlc << "data=[" << bytesToHex(f.data, f.dlc) << "]";
     can_send(bus, f, 0);
 }
-
 static void CAN_Tx_RESET_BOTH() {
     CAN_Tx_RESET_on("can0");
     CAN_Tx_RESET_on("can1");
@@ -322,23 +350,21 @@ static void CAN_Tx_DRIVE_CMD(uint8_t v /* 1:drive, 0:stop */) {
     can_send("can0", f, 0);
 }
 
-
-
 // ── CAN RX (버스 구분은 ID로 충분하여 공용 콜백 사용) ───────────────────────
 static void onCanRx(const CanFrame* fr, void* user) {
     const char* bus = (const char*)user;
 
-    // 🔸요청한 로깅: can0에서 id 0x100 들어오면 한 번 출력하고 종료
+    // can0에서 id 0x100 디버그 출력
     if (bus && strcmp(bus, "can0") == 0 && fr->id == 0x100) {
         qInfo() << "[CAN0 RX] DEBUG id=0x"
                 << QString::number(fr->id, 16).toUpper()
                 << "dlc=" << fr->dlc
                 << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
-        return; // 좌석 상태 등 기존 분기 타지 않도록 조기 종료
+        return;
     }
-    
+
     // 좌석 상태 (can1)
-    if (strcmp(bus, "can1") == 0 &&fr->id == ID_POW_SEAT_STATE && fr->dlc >= 4) {
+    if (strcmp(bus, "can1") == 0 && fr->id == ID_POW_SEAT_STATE && fr->dlc >= 4) {
         qInfo() << "[CAN1 RX] SEAT_STATE  id=0x" << QString::number(fr->id,16).toUpper()
                 << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
         m_seatPosition    = fr->data[0];
@@ -346,26 +372,23 @@ static void onCanRx(const CanFrame* fr, void* user) {
         m_seatFrontHeight = fr->data[2];
         m_seatRearHeight  = fr->data[3];
 
-    // ── 5번째 '바이트'로 start 트리거 ──
-    if (fr->dlc >= 5) {
-        const uint8_t flagByte = fr->data[4];  // 5번째 바이트
-        if (flagByte == 0x01 && m_iSystemStart == 0) {
-            sendToAll([](IpcConnection* c){
-                // reqId 비움: 브로드캐스트성 알림
-                sendSystemStart(c, {});
+        // 5번째 바이트로 system/start 트리거
+        if (fr->dlc >= 5) {
+            const uint8_t flagByte = fr->data[4];
+            if (flagByte == 0x01 && m_iSystemStart == 0) {
                 m_iSystemStart = 1;
-            });
+                if (hasClients()) {
+                    sendToAll([](IpcConnection* c){ sendSystemStart(c, {}); });
+                }
+            }
         }
-    }
 
-        if (hasClients()) {
-            sendToAll([](IpcConnection* c){ sendSeatState(c); });
-        }
+        if (hasClients()) sendToAll([](IpcConnection* c){ sendSeatState(c); });
         return;
     }
 
     // 미러 상태 (can1)
-    if (strcmp(bus, "can1") == 0 &&fr->id == ID_POW_MIRROR_STATE && fr->dlc >= 6) {
+    if (strcmp(bus, "can1") == 0 && fr->id == ID_POW_MIRROR_STATE && fr->dlc >= 6) {
         qInfo() << "[CAN1 RX] MIRROR_STATE id=0x" << QString::number(fr->id,16).toUpper()
                 << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
         m_sideMirrorLeftYaw    = decAngle180_toSigned(fr->data[0], 90);
@@ -375,25 +398,20 @@ static void onCanRx(const CanFrame* fr, void* user) {
         m_roomMirrorYaw        = decAngle180_toSigned(fr->data[4], 90);
         m_roomMirrorPitch      = decAngle180_toSigned(fr->data[5], 90);
 
-        if (hasClients()) {
-            sendToAll([](IpcConnection* c){ sendMirrorState(c); });
-        }
+        if (hasClients()) sendToAll([](IpcConnection* c){ sendMirrorState(c); });
         return;
     }
 
     // 핸들 상태 (can1)
-    if (strcmp(bus, "can1") == 0 &&fr->id == ID_POW_WHEEL_STATE && fr->dlc >= 2) {
+    if (strcmp(bus, "can1") == 0 && fr->id == ID_POW_WHEEL_STATE && fr->dlc >= 2) {
         qInfo() << "[CAN1 RX] WHEEL_STATE id=0x" << QString::number(fr->id,16).toUpper()
                 << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
         m_handlePosition = fr->data[0];
         m_handleAngle    = decAngle180_toSigned(fr->data[1], 90);
 
-        if (hasClients()) {
-            sendToAll([](IpcConnection* c){ sendWheelState(c); });
-        }
+        if (hasClients()) sendToAll([](IpcConnection* c){ sendWheelState(c); });
         return;
     }
-
 
     // 인증 단계 상태 (can0)
     if (fr->id == ID_SCA_DCU_AUTH_STATE && fr->dlc >= 2) {
@@ -408,44 +426,41 @@ static void onCanRx(const CanFrame* fr, void* user) {
         return;
     }
 
-    
-if (fr->id == ID_SCA_DCU_AUTH_RESULT && fr->dlc >= 1) {
-    qInfo() << "[CAN0 RX] AUTH_RESULT id=0x" << QString::number(fr->id,16).toUpper()
-            << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
+    // 인증 결과 (can0)
+    if (fr->id == ID_SCA_DCU_AUTH_RESULT && fr->dlc >= 1) {
+        qInfo() << "[CAN0 RX] AUTH_RESULT id=0x" << QString::number(fr->id,16).toUpper()
+                << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
 
-    const uint8_t flag = fr->data[0];   // 0x01: fail, 그 외: ok
+        const uint8_t flag = fr->data[0];   // 0x01: fail, 그 외: ok
+        g_accUserId.clear(); // 새 결과 시작이므로 버퍼 리셋
 
-    // 새 결과 시작이므로 버퍼 리셋
-    g_accUserId.clear();
+        if (flag == 0x01) {
+            g_currentUserId.clear();
+            qInfo() << "[auth] result FAIL (flag=0x01)";
+            if (hasClients()) {
+                sendToAll([](IpcConnection* c){
+                    sendAuthResult(c, QString(), 0.0, /*error=*/1, g_lastAuthReqId);
+                });
+            }
+            return;
+        }
 
-    if (flag == 0x01) {
-        g_currentUserId.clear();
-        qInfo() << "[auth] result FAIL (flag=0x01)";
+        if (fr->dlc > 1) {
+            g_accUserId.append(reinterpret_cast<const char*>(fr->data + 1),
+                               fr->dlc - 1);
+        }
+        const QString uid = QString::fromLatin1(g_accUserId);
+        g_currentUserId = uid;
+        qInfo() << "[auth] result OK  userId=" << (uid.isEmpty() ? "<partial/empty>" : uid);
+
         if (hasClients()) {
-            sendToAll([](IpcConnection* c){
-                sendAuthResult(c, QString(), 0.0, /*error=*/1, g_lastAuthReqId);
+            const QString uidCopy = uid;
+            sendToAll([uidCopy](IpcConnection* c){
+                sendAuthResult(c, uidCopy, 0.95, 0, g_lastAuthReqId);
             });
         }
         return;
     }
-
-    if (fr->dlc > 1) {
-        g_accUserId.append(reinterpret_cast<const char*>(fr->data + 1),
-                           fr->dlc - 1);
-    }
-
-    const QString uid = QString::fromLatin1(g_accUserId);
-    g_currentUserId = uid;
-    qInfo() << "[auth] result OK  userId=" << (uid.isEmpty() ? "<partial/empty>" : uid);
-
-    if (hasClients()) {
-        const QString uidCopy = uid; // 람다 캡처 안전
-        sendToAll([uidCopy](IpcConnection* c){
-            sendAuthResult(c, uidCopy, 0.95, 0, g_lastAuthReqId);
-        });
-    }
-    return;
-}
 
     // 인증 결과 추가 (can0)
     if (fr->id == ID_SCA_DCU_AUTH_RESULT_ADD && fr->dlc >= 1) {
@@ -512,30 +527,25 @@ if (fr->id == ID_SCA_DCU_AUTH_RESULT && fr->dlc >= 1) {
         }
         return;
     }
-    
+
+    // 외부 경고 (can0)
     if (fr->id == ID_CAN_SYSTEM_WARNING && fr->dlc >= 1) {
         if (hasClients()) {
             const QString code = QStringLiteral("CAN_WARN_0x500");
             const QString msg  = QStringLiteral("External warning trigger received on %1 (id=0x500).")
                                     .arg(bus ? bus : "?");
-            sendToAll([code, msg](IpcConnection* c){
-                sendSystemWarning(c, code, msg);
-            });
-        }
-        return; // 다른 분기 타지 않도록 종료
-    }
-    
-    if (fr->id == ID_CAN_SYSTEM_START && fr->dlc >= 1) {
-
-        if (hasClients()) {
-            sendToAll([](IpcConnection* c){
-                // reqId 비움: 브로드캐스트성 알림
-                sendSystemStart(c, {});
-            });
+            sendToAll([code, msg](IpcConnection* c){ sendSystemWarning(c, code, msg); });
         }
         return;
     }
 
+    // 외부 start (can0)
+    if (fr->id == ID_CAN_SYSTEM_START && fr->dlc >= 1) {
+        if (hasClients()) {
+            sendToAll([](IpcConnection* c){ sendSystemStart(c, {}); });
+        }
+        return;
+    }
 
     qInfo() << "[CAN  ? RX] Unknown     id=0x" << QString::number(fr->id,16).toUpper()
             << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
@@ -543,7 +553,7 @@ if (fr->id == ID_SCA_DCU_AUTH_RESULT && fr->dlc >= 1) {
 
 // ── CAN BEGIN (can0 + can1) ─────────────────────────────────────────────────
 static bool startCAN(QString* errOut=nullptr) {
-    // 공통 속도(예): 500k, 샘플포인트 환경에 맞게 조정
+    // 예: 500k, 샘플포인트는 환경에 맞게
     CanConfig cfg0{0, 500000, 0.75f, 1, CAN_MODE_NORMAL};
     CanConfig cfg1{1, 500000, 0.75f, 1, CAN_MODE_NORMAL};
 
@@ -564,11 +574,12 @@ static bool startCAN(QString* errOut=nullptr) {
         if (errOut) *errOut = "can_subscribe(can1) failed";
         return false;
     }
-    // can0: SCA/TCU 인증/프로필 수신
+
+    // can0: SCA/TCU 인증/프로필/디버그/경고 수신
     static uint32_t ids_sca[] = {
         ID_SCA_DCU_AUTH_STATE, ID_SCA_DCU_AUTH_RESULT, ID_SCA_DCU_AUTH_RESULT_ADD,
         ID_TCU_DCU_USER_PROFILE_SEAT, ID_TCU_DCU_USER_PROFILE_MIRROR, ID_TCU_DCU_USER_PROFILE_WHEEL,
-        ID_TCU_DCU_USER_PROFILE_UPDATE_ACK, 0x100,ID_CAN_SYSTEM_WARNING,ID_CAN_SYSTEM_START,
+        ID_TCU_DCU_USER_PROFILE_UPDATE_ACK, 0x100, ID_CAN_SYSTEM_WARNING, ID_CAN_SYSTEM_START,
     };
     CanFilter flt_sca{};
     flt_sca.type = CAN_FILTER_LIST;
@@ -584,7 +595,7 @@ static bool startCAN(QString* errOut=nullptr) {
     return true;
 }
 
-// ── IPC ──────────────────────────────────────────────────────────
+// ── main ────────────────────────────────────────────────────────────────────
 int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
 
@@ -595,14 +606,23 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // 버튼 주기 송신 타이머 시작 (항상 현재 상태 전송; 누르지 않으면 0 유지)
+    g_btnTxTimer = new QTimer(&app);
+    g_btnTxTimer->setTimerType(Qt::PreciseTimer);
+    g_btnTxTimer->setInterval(kBtnTxPeriodMs);
+    QObject::connect(g_btnTxTimer, &QTimer::timeout, [&]{
+        CAN_Tx_SEAT_BUTTONS();
+        CAN_Tx_MIRROR_BUTTONS();
+        CAN_Tx_WHEEL_BUTTONS();
+    });
+    g_btnTxTimer->start();
+
+    // IPC 서버 준비
     QLocalServer::removeServer(kSock);
     QFile::remove(kSock);
-
     ::umask(0);
 
-    // IPC 서버
     IpcServer server(kSock);
-
 #ifdef HAS_IPCSERVER_SET_SOCKET_OPTIONS
     server.setSocketOptions(QLocalServer::WorldAccessOption);
 #endif
@@ -612,32 +632,32 @@ int main(int argc, char** argv) {
         qCritical() << "listen failed:" << err;
         return 1;
     }
-
 #ifdef __linux__
     ::chmod(kSock.toLocal8Bit().constData(), 0777);
 #endif
 
-    // UI → 인증 트리거 (요청에 대한 응답은 해당 클라이언트에만)
+    // UI → 인증 트리거
     server.addHandler("auth/result", [](const IpcMessage& m, IpcConnection* c) {
         g_lastAuthReqId = m.reqId;
         CAN_Tx_USER_FACE_REQ(); // can0
         sendAuthProcess(c, QStringLiteral("얼굴 인식 요청 전송 (CAN0)..."), g_lastAuthReqId);
     });
 
-    // UI → 프로필 요청 트리거 (요청자에게만 응답)
+    // UI → 프로필 요청
     server.addHandler("data/result", [](const IpcMessage& m, IpcConnection* c) {
         g_lastDataReqId = m.reqId;
-            const QString uidForLog = g_currentUserId.isEmpty() ? QStringLiteral("<none>") : g_currentUserId;
-    qInfo() << "[profile] request sent  reqId=" << g_lastDataReqId
-            << " userId=" << uidForLog;
+        const QString uidForLog = g_currentUserId.isEmpty() ? QStringLiteral("<none>") : g_currentUserId;
+        qInfo() << "[profile] request sent  reqId=" << g_lastDataReqId
+                << " userId=" << uidForLog;
         CAN_Tx_USER_PROFILE_REQ(); // can0
         sendAuthProcess(c, QStringLiteral("프로필 요청 전송 (CAN0)..."), g_lastDataReqId);
     });
 
+    // 핸드셰이크
     server.addHandler("system/hello", [](const IpcMessage& m, IpcConnection* c){
-       //sendSystemStart(c, m.reqId);
+        // 필요시 start 이벤트 단건 응답 가능
+        // sendSystemStart(c, m.reqId);
     });
-
     server.addHandler("connect", [](const IpcMessage& m, IpcConnection* c){
         c->send({"system/start", m.reqId, QJsonObject{
             {"ok", true},
@@ -645,12 +665,10 @@ int main(int argc, char** argv) {
         }});
     });
 
+    // UI → Power 즉시적용 (can1)
     server.addHandler("power/apply", [](const IpcMessage& m, IpcConnection* c) {
         const QJsonObject& p = m.payload;
-
-        bool seatChanged   = false;
-        bool mirrorChanged = false;
-        bool wheelChanged  = false;
+        bool seatChanged=false, mirrorChanged=false, wheelChanged=false;
 
         // Seat
         if (p.contains("seatPosition"))    { m_seatPosition     = clampInt(p.value("seatPosition").toInt(), 0, 100); seatChanged = true; }
@@ -658,7 +676,7 @@ int main(int argc, char** argv) {
         if (p.contains("seatFrontHeight")) { m_seatFrontHeight  = clampInt(p.value("seatFrontHeight").toInt(), 0, 100); seatChanged = true; }
         if (p.contains("seatRearHeight"))  { m_seatRearHeight   = clampInt(p.value("seatRearHeight").toInt(), 0, 100); seatChanged = true; }
 
-        // Mirrors (UI -45~45)
+        // Mirrors
         if (p.contains("sideMirrorLeftYaw"))    { m_sideMirrorLeftYaw    = clampInt(p.value("sideMirrorLeftYaw").toInt(), -45, 45); mirrorChanged = true; }
         if (p.contains("sideMirrorLeftPitch"))  { m_sideMirrorLeftPitch  = clampInt(p.value("sideMirrorLeftPitch").toInt(), -45, 45); mirrorChanged = true; }
         if (p.contains("sideMirrorRightYaw"))   { m_sideMirrorRightYaw   = clampInt(p.value("sideMirrorRightYaw").toInt(), -45, 45); mirrorChanged = true; }
@@ -674,22 +692,16 @@ int main(int argc, char** argv) {
         if (mirrorChanged) CAN_Tx_MIRROR_ORDER();
         if (wheelChanged)  CAN_Tx_WHEEL_ORDER();
 
-        // 개별 요청자에게 ACK
-        QTimer::singleShot(200, c, [c, reqId=m.reqId]{ sendPowerApplyAck(c, true, reqId); });
-
-        // 모든 클라이언트에 현재 상태 브로드캐스트
+        // 브로드캐스트 상태
         if (seatChanged)   sendToAll([](IpcConnection* cc){ sendSeatState(cc); });
         if (mirrorChanged) sendToAll([](IpcConnection* cc){ sendMirrorState(cc); });
         if (wheelChanged)  sendToAll([](IpcConnection* cc){ sendWheelState(cc); });
     });
 
-    // UI → 사용자 프로필 업데이트 (TCU 쪽: can0)
+    // UI → 사용자 프로필 업데이트 (can0)
     server.addHandler("user/update", [](const IpcMessage& m, IpcConnection* c){
         const QJsonObject& p = m.payload;
-
-        bool seatChanged   = false;
-        bool mirrorChanged = false;
-        bool wheelChanged  = false;
+        bool seatChanged=false, mirrorChanged=false, wheelChanged=false;
 
         // Seat
         if (p.contains("seatPosition"))    { m_seatPosition     = clampInt(p.value("seatPosition").toInt(), 0, 100); seatChanged = true; }
@@ -713,51 +725,72 @@ int main(int argc, char** argv) {
         if (mirrorChanged) CAN_Tx_USER_PROFILE_MIRROR_UPDATE();
         if (wheelChanged)  CAN_Tx_USER_PROFILE_WHEEL_UPDATE();
 
-        // 요청자에게 송신 완료 알림
         if (c) c->send({"user/update/sent", m.reqId, QJsonObject{{"ok", true}}});
 
-        // 전체에게 현재 상태 브로드캐스트
         if (seatChanged)   sendToAll([](IpcConnection* cc){ sendSeatState(cc); });
         if (mirrorChanged) sendToAll([](IpcConnection* cc){ sendMirrorState(cc); });
         if (wheelChanged)  sendToAll([](IpcConnection* cc){ sendWheelState(cc); });
     });
 
-// UI → 주행 상태 전환 (drive/stop)
-server.addHandler("tcu/drive", [](const IpcMessage& m, IpcConnection* c) {
-    const QJsonObject& p = m.payload;
+    // UI → 주행 상태 전환 (drive/stop)
+    server.addHandler("tcu/drive", [](const IpcMessage& m, IpcConnection* /*c*/) {
+        const QJsonObject& p = m.payload;
+        const QString stateStr = p.value("state").toString().toLower();
+        const bool startFlagFromBool = p.contains("start") ? p.value("start").toBool(false) : false;
 
-    // 허용하는 입력: {"state":"drive"|"stop"}  또는 {"start":true|false}
-    const QString stateStr = p.value("state").toString().toLower();
-    const bool startFlagFromBool = p.contains("start") ? p.value("start").toBool(false) : false;
+        int v = 0;  // 0: stop, 1: drive
+        if (stateStr == "drive" || stateStr == "start")      v = 1;
+        else if (stateStr == "stop")                          v = 0;
+        else if (!p.contains("state"))                        v = startFlagFromBool ? 1 : 0;
+        else { qWarning() << "[tcu/drive] unknown state =" << stateStr; return; }
 
-    // 우선순위: state 문자열 우선, 없으면 start 불리언 사용
-    int v = 0;  // 0: stop, 1: drive
-    if (stateStr == "drive" || stateStr == "start") {
-        v = 1;
-    } else if (stateStr == "stop") {
-        v = 0;
-    } else if (p.contains("state")) {
-        // 알 수 없는 state 값
-        qWarning() << "[tcu/drive] unknown state =" << stateStr;
-        return;
-    } else {
-        // state가 없으면 start 불리언으로 판단
-        v = startFlagFromBool ? 1 : 0;
-    }
+        CAN_Tx_DRIVE_CMD(static_cast<uint8_t>(v));
+    });
 
-    // CAN 전송 (can0)
-    CAN_Tx_DRIVE_CMD(static_cast<uint8_t>(v));
+    // UI → 버튼 플래그 설정 (0/1/2) : 좌석
+    server.addHandler("button/seat", [](const IpcMessage& m, IpcConnection* c){
+        const auto& p = m.payload;
+        auto clampFlag = [](int v){ return std::clamp(v, 0, 2); };
 
-    // ACK 회신
-});
+        if (p.contains("position")) g_btnSeat[0] = (uint8_t)clampFlag(p.value("position").toInt());
+        if (p.contains("angle"))    g_btnSeat[1] = (uint8_t)clampFlag(p.value("angle").toInt());
+        if (p.contains("front"))    g_btnSeat[2] = (uint8_t)clampFlag(p.value("front").toInt());
+        if (p.contains("rear"))     g_btnSeat[3] = (uint8_t)clampFlag(p.value("rear").toInt());
 
+        if (c) c->send({"button/seat/ack", m.reqId, QJsonObject{{"ok", true}}});
+    });
+
+    // UI → 버튼 플래그 설정 (0/1/2) : 미러
+    server.addHandler("button/mirror", [](const IpcMessage& m, IpcConnection* c){
+        const auto& p = m.payload;
+        auto clampFlag = [](int v){ return std::clamp(v, 0, 2); };
+
+        if (p.contains("leftYaw"))     g_btnMirror[0] = (uint8_t)clampFlag(p.value("leftYaw").toInt());
+        if (p.contains("leftPitch"))   g_btnMirror[1] = (uint8_t)clampFlag(p.value("leftPitch").toInt());
+        if (p.contains("rightYaw"))    g_btnMirror[2] = (uint8_t)clampFlag(p.value("rightYaw").toInt());
+        if (p.contains("rightPitch"))  g_btnMirror[3] = (uint8_t)clampFlag(p.value("rightPitch").toInt());
+        if (p.contains("roomYaw"))     g_btnMirror[4] = (uint8_t)clampFlag(p.value("roomYaw").toInt());
+        if (p.contains("roomPitch"))   g_btnMirror[5] = (uint8_t)clampFlag(p.value("roomPitch").toInt());
+
+        if (c) c->send({"button/mirror/ack", m.reqId, QJsonObject{{"ok", true}}});
+    });
+
+    // UI → 버튼 플래그 설정 (0/1/2) : 휠
+    server.addHandler("button/wheel", [](const IpcMessage& m, IpcConnection* c){
+        const auto& p = m.payload;
+        auto clampFlag = [](int v){ return std::clamp(v, 0, 2); };
+
+        if (p.contains("position")) g_btnWheel[0] = (uint8_t)clampFlag(p.value("position").toInt());
+        if (p.contains("angle"))    g_btnWheel[1] = (uint8_t)clampFlag(p.value("angle").toInt());
+
+        if (c) c->send({"button/wheel/ack", m.reqId, QJsonObject{{"ok", true}}});
+    });
 
     // 연결 상태 트래킹
     QObject::connect(&server, &IpcServer::clientConnected, [&](IpcConnection* c){
         if (!c) return;
         g_clients.insert(c);
         qInfo() << "[ipc] client connected, total =" << g_clients.size();
-        // 안전 제거: 연결 객체 파괴 시 자동 정리
         QObject::connect(c, &QObject::destroyed, &app, [c]{
             g_clients.remove(c);
             qInfo() << "[ipc] client destroyed, total =" << g_clients.size();
@@ -768,7 +801,7 @@ server.addHandler("tcu/drive", [](const IpcMessage& m, IpcConnection* c) {
         qInfo() << "[ipc] client disconnected, total =" << g_clients.size();
     });
 
-    // 콘솔 키 입력
+    // 콘솔 키 입력 (A: start 알림, B: reset 브로드캐스트 + CAN reset)
     auto notifier = new QSocketNotifier(STDIN_FILENO, QSocketNotifier::Read, &app);
     QObject::connect(notifier, &QSocketNotifier::activated, [&]{
         char ch = 0; if (::read(STDIN_FILENO, &ch, 1) <= 0) return;
@@ -776,10 +809,8 @@ server.addHandler("tcu/drive", [](const IpcMessage& m, IpcConnection* c) {
         if (ch=='a' || ch=='A') {
             sendToAll([](IpcConnection* c){ sendSystemStart(c, "req-a"); });
         } else if (ch=='b' || ch=='B') {
-            // 🔹 IPC로 system/reset 송신 (모든 클라)
             sendToAll([](IpcConnection* c){ sendSystemReset(c, "manual-keypress"); });
-            m_iSystemStart =0;
-            // 🔹 CAN0/1 모두 RESET 프레임 송신
+            m_iSystemStart = 0;
             CAN_Tx_RESET_BOTH();
         }
     });
