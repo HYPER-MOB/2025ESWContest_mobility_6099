@@ -47,6 +47,8 @@ static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_SEAT_UPDATE   = 0x206; // DLC4
 static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_MIRROR_UPDATE = 0x207; // DLC6
 static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_WHEEL_UPDATE  = 0x208; // DLC2
 static constexpr uint32_t ID_TCU_DCU_USER_PROFILE_UPDATE_ACK    = 0x209; // DLC2
+static constexpr uint32_t ID_CAN_SYSTEM_WARNING = 0x500; 
+static constexpr uint32_t ID_CAN_SYSTEM_START = 0x600; 
 
 // ── 내부 상태(IPC <-> CAN 공유 변수) ─────────────────────────────────────────
 static int m_seatPosition     = 20;   // 0~100 (%)
@@ -486,6 +488,30 @@ static void onCanRx(const CanFrame* fr, void* user) {
         }
         return;
     }
+    
+    if (fr->id == ID_CAN_SYSTEM_WARNING && fr->dlc >= 1) {
+        if (hasClients()) {
+            const QString code = QStringLiteral("CAN_WARN_0x500");
+            const QString msg  = QStringLiteral("External warning trigger received on %1 (id=0x500).")
+                                    .arg(bus ? bus : "?");
+            sendToAll([code, msg](IpcConnection* c){
+                sendSystemWarning(c, code, msg);
+            });
+        }
+        return; // 다른 분기 타지 않도록 종료
+    }
+    
+    if (fr->id == ID_CAN_SYSTEM_START && fr->dlc >= 1) {
+
+        if (hasClients()) {
+            sendToAll([](IpcConnection* c){
+                // reqId 비움: 브로드캐스트성 알림
+                sendSystemStart(c, {});
+            });
+        }
+        return;
+    }
+
 
     qInfo() << "[CAN  ? RX] Unknown     id=0x" << QString::number(fr->id,16).toUpper()
             << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
@@ -518,7 +544,7 @@ static bool startCAN(QString* errOut=nullptr) {
     static uint32_t ids_sca[] = {
         ID_SCA_DCU_AUTH_STATE, ID_SCA_DCU_AUTH_RESULT, ID_SCA_DCU_AUTH_RESULT_ADD,
         ID_TCU_DCU_USER_PROFILE_SEAT, ID_TCU_DCU_USER_PROFILE_MIRROR, ID_TCU_DCU_USER_PROFILE_WHEEL,
-        ID_TCU_DCU_USER_PROFILE_UPDATE_ACK, 0x100,
+        ID_TCU_DCU_USER_PROFILE_UPDATE_ACK, 0x100,ID_CAN_SYSTEM_WARNING,ID_CAN_SYSTEM_START,
     };
     CanFilter flt_sca{};
     flt_sca.type = CAN_FILTER_LIST;
