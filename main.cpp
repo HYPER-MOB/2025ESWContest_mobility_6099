@@ -33,6 +33,7 @@ static constexpr uint32_t ID_POW_WHEEL_STATE  = 0x203; // DLC 3
 // SCA/TCU 영역 (인증/프로필) (can0 TX/RX)
 static constexpr uint32_t ID_DCU_RESET                          = 0x001; // DLC 1
 static constexpr uint32_t ID_DCU_RESET_ACK                      = 0x002; // DLC 2
+static constexpr uint32_t ID_DCU_TCU_DRIVE_CMD = 0x005; // DLC 1  (drive:1, stop:0) 
 static constexpr uint32_t ID_DCU_SCA_USER_FACE_REQ              = 0x101; // DLC 1
 static constexpr uint32_t ID_SCA_DCU_AUTH_STATE                 = 0x103; // DLC 2
 static constexpr uint32_t ID_SCA_DCU_AUTH_RESULT                = 0x112; // DLC 8
@@ -84,6 +85,8 @@ static inline int decAngle180_toSigned(uint8_t raw, int offset) {
 static QString g_lastAuthReqId;
 static QString g_lastDataReqId;
 static QByteArray g_accUserId;
+
+static QString g_currentUserId;
 
 static inline QString bytesToHex(const uint8_t* d, int n) {
     QString s;
@@ -306,6 +309,16 @@ static void CAN_Tx_RESET_BOTH() {
     CAN_Tx_RESET_on("can1");
 }
 
+// → SCA/TCU 로 가는 주행 상태 명령 (can0)
+static void CAN_Tx_DRIVE_CMD(uint8_t v /* 1:drive, 0:stop */) {
+    CanFrame f = mkFrame(ID_DCU_TCU_DRIVE_CMD, 1);
+    f.data[0] = v;
+    qInfo() << "[CAN0 TX] DRIVE_CMD id=0x" << QString::number(f.id,16).toUpper()
+            << " dlc=" << f.dlc << " data=[" << bytesToHex(f.data, f.dlc) << "]";
+    can_send("can0", f, 0);
+}
+
+
 
 // ── CAN RX (버스 구분은 ID로 충분하여 공용 콜백 사용) ───────────────────────
 static void onCanRx(const CanFrame* fr, void* user) {
@@ -386,6 +399,9 @@ static void onCanRx(const CanFrame* fr, void* user) {
 
         if (flag == 0x01) {
             g_accUserId.clear();
+      
+        g_currentUserId.clear();  // (추가) 캐시 초기화
+        qInfo() << "[auth] result FAIL (flag=0x01)";  // (추가) 로깅
             if (hasClients()) sendToAll([](IpcConnection* c){
                 sendAuthResult(c, QString(), 0.0, /*error=*/1, /*reqId=*/g_lastAuthReqId);
             });
@@ -394,6 +410,10 @@ static void onCanRx(const CanFrame* fr, void* user) {
 
         g_accUserId.clear();
         if (fr->dlc >= 8) g_accUserId.append((const char*)&fr->data[1], 7);
+        
+    const QString uid = QString::fromLatin1(g_accUserId);
+    g_currentUserId = uid;                                 // (추가) 캐시 저장
+    qInfo() << "[auth] result OK  userId=" << uid;         // (추가) 로깅
         if (hasClients()) {
             const QString uid = QString::fromLatin1(g_accUserId);
             sendToAll([uid](IpcConnection* c){ sendAuthResult(c, uid, 0.95, 0, g_lastAuthReqId); });
@@ -557,6 +577,9 @@ int main(int argc, char** argv) {
     // UI → 프로필 요청 트리거 (요청자에게만 응답)
     server.addHandler("data/result", [](const IpcMessage& m, IpcConnection* c) {
         g_lastDataReqId = m.reqId;
+            const QString uidForLog = g_currentUserId.isEmpty() ? QStringLiteral("<none>") : g_currentUserId;
+    qInfo() << "[profile] request sent  reqId=" << g_lastDataReqId
+            << " userId=" << uidForLog;
         CAN_Tx_USER_PROFILE_REQ(); // can0
         sendAuthProcess(c, QStringLiteral("프로필 요청 전송 (CAN0)..."), g_lastDataReqId);
     });
@@ -648,6 +671,35 @@ int main(int argc, char** argv) {
         if (mirrorChanged) sendToAll([](IpcConnection* cc){ sendMirrorState(cc); });
         if (wheelChanged)  sendToAll([](IpcConnection* cc){ sendWheelState(cc); });
     });
+
+// UI → 주행 상태 전환 (drive/stop)
+server.addHandler("tcu/drive", [](const IpcMessage& m, IpcConnection* c) {
+    const QJsonObject& p = m.payload;
+
+    // 허용하는 입력: {"state":"drive"|"stop"}  또는 {"start":true|false}
+    const QString stateStr = p.value("state").toString().toLower();
+    const bool startFlagFromBool = p.contains("start") ? p.value("start").toBool(false) : false;
+
+    // 우선순위: state 문자열 우선, 없으면 start 불리언 사용
+    int v = 0;  // 0: stop, 1: drive
+    if (stateStr == "drive" || stateStr == "start") {
+        v = 1;
+    } else if (stateStr == "stop") {
+        v = 0;
+    } else if (p.contains("state")) {
+        // 알 수 없는 state 값
+        qWarning() << "[tcu/drive] unknown state =" << stateStr;
+        return;
+    } else {
+        // state가 없으면 start 불리언으로 판단
+        v = startFlagFromBool ? 1 : 0;
+    }
+
+    // CAN 전송 (can0)
+    CAN_Tx_DRIVE_CMD(static_cast<uint8_t>(v));
+
+    // ACK 회신
+});
 
 
     // 연결 상태 트래킹
