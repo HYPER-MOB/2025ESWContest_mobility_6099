@@ -32,8 +32,8 @@ static const char* CH = "twai0";
 static const int NODE_IDX = 1;
 static QueueHandle_t g_canRx;
 
-static uint32_t list_ids[]                = { BCAN_ID_DCU_RESET, BCAN_ID_DCU_SEAT_ORDER };
-static const CanFilter f_list             = { CAN_FILTER_LIST, { .list = { list_ids,  2 } } };
+static uint32_t list_ids[]                = { BCAN_ID_DCU_RESET, BCAN_ID_DCU_SEAT_ORDER, BCAN_ID_DCU_SEAT_BUTTON };
+static const CanFilter f_list             = { CAN_FILTER_LIST, { .list = { list_ids,  3 } } };
 static const CanFilter f_any              = { CAN_FILTER_MASK, { .mask = { 0,         0 } } };
 
 int subID_all = -1;
@@ -120,8 +120,8 @@ AxisConfig CFG_SEAT_POS = {
     .min_val        = 0,
     .max_val        = 100,
     .def_val        = 50,
-    .stroke_ms      = 6500.0f,
-    .ms_per_unit    = 6500.0f / 100,
+    .stroke_ms      = 12000.0f,
+    .ms_per_unit    = 12000.0f / 100,
     .onMoveToMin    = { {PIN_SEAT_POS_A, false}, {PIN_SEAT_POS_B, true} },
     .onMoveToMax    = { {PIN_SEAT_POS_A, true}, {PIN_SEAT_POS_B, false} },
     .onHold         = { {PIN_SEAT_POS_A, false}, {PIN_SEAT_POS_B, false} }
@@ -129,9 +129,9 @@ AxisConfig CFG_SEAT_POS = {
 AxisConfig CFG_SEAT_ANGLE = {
     .min_val        = 0,
     .max_val        = 180,
-    .def_val        = 90,
-    .stroke_ms      = 6500.0f,
-    .ms_per_unit    = 6500.0f / 180,
+    .def_val        = 30,
+    .stroke_ms      = 25500.0f,
+    .ms_per_unit    = 25500.0f / 180,
     .onMoveToMin    = { {PIN_SEAT_ANGLE_A, false}, {PIN_SEAT_ANGLE_B, true} },
     .onMoveToMax    = { {PIN_SEAT_ANGLE_A, true}, {PIN_SEAT_ANGLE_B, false} },
     .onHold         = { {PIN_SEAT_ANGLE_A, false}, {PIN_SEAT_ANGLE_B, false} }
@@ -140,9 +140,9 @@ AxisConfig CFG_SEAT_ANGLE = {
 AxisConfig CFG_SEAT_FRONT = {
     .min_val        = 0,
     .max_val        = 100,
-    .def_val        = 50,
-    .stroke_ms      = 6500.0f,
-    .ms_per_unit    = 6500.0f / 100,
+    .def_val        = 0,
+    .stroke_ms      = 3300.0f,
+    .ms_per_unit    = 3300.0f / 100,
     .onMoveToMin    = { {PIN_SEAT_FRONT_A, false}, {PIN_SEAT_FRONT_B, true} },
     .onMoveToMax    = { {PIN_SEAT_FRONT_A, true}, {PIN_SEAT_FRONT_B, false} },
     .onHold         = { {PIN_SEAT_FRONT_A, false}, {PIN_SEAT_FRONT_B, false} }
@@ -150,18 +150,18 @@ AxisConfig CFG_SEAT_FRONT = {
 AxisConfig CFG_SEAT_REAR = {
     .min_val        = 0,
     .max_val        = 100,
-    .def_val        = 50,
-    .stroke_ms      = 6500.0f,
-    .ms_per_unit    = 6500.0f / 100,
+    .def_val        = 0,
+    .stroke_ms      = 7000.0f,
+    .ms_per_unit    = 7000.0f / 100,
     .onMoveToMin    = { {PIN_SEAT_REAR_A, false}, {PIN_SEAT_REAR_B, true} },
     .onMoveToMax    = { {PIN_SEAT_REAR_A, true}, {PIN_SEAT_REAR_B, false} },
     .onHold         = { {PIN_SEAT_REAR_A, false}, {PIN_SEAT_REAR_B, false} }
 };
 
-AxisRuntime RT_SEAT_POS         = {CFG_SEAT_POS,    50, 50, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
-AxisRuntime RT_SEAT_ANGLE       = {CFG_SEAT_ANGLE,  90, 90, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
-AxisRuntime RT_SEAT_FRONT       = {CFG_SEAT_FRONT,  50, 50, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
-AxisRuntime RT_SEAT_REAR        = {CFG_SEAT_REAR,   50, 50, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
+AxisRuntime RT_SEAT_POS         = {CFG_SEAT_POS,    0, 0, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
+AxisRuntime RT_SEAT_ANGLE       = {CFG_SEAT_ANGLE,  0, 0, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
+AxisRuntime RT_SEAT_FRONT       = {CFG_SEAT_FRONT,  0, 0, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
+AxisRuntime RT_SEAT_REAR        = {CFG_SEAT_REAR,   0, 0, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
 
 AxisRuntime* AXES[] = { &RT_SEAT_POS, &RT_SEAT_ANGLE, &RT_SEAT_FRONT, &RT_SEAT_REAR };
 static const int AXES_N = sizeof(AXES)/sizeof(AXES[0]);
@@ -198,10 +198,10 @@ static void nv_begin(){
 }
 
 static void nv_load_currents(){
-    RT_SEAT_ANGLE.current    = prefs.getShort(KEY_ANGLE,  (short)RT_SEAT_ANGLE.config.def_val);
-    RT_SEAT_POS.current  = prefs.getShort(KEY_POS,  (short)RT_SEAT_POS.config.def_val);
-    RT_SEAT_FRONT.current   = prefs.getShort(KEY_FRONT,  (short)RT_SEAT_FRONT.config.def_val);
-    RT_SEAT_REAR.current = prefs.getShort(KEY_REAR,  (short)RT_SEAT_REAR.config.def_val);
+    RT_SEAT_ANGLE.current    = prefs.getShort(KEY_ANGLE);
+    RT_SEAT_POS.current  = prefs.getShort(KEY_POS);
+    RT_SEAT_FRONT.current   = prefs.getShort(KEY_FRONT);
+    RT_SEAT_REAR.current = prefs.getShort(KEY_REAR);
     g_nvLastSaveMs = millis();
 }
 
@@ -274,10 +274,10 @@ static void can_setup(void){
     Serial.printf("can_open OK (NORMAL)\n");
 
     // 모든 프레임 구독
-    if (can_subscribe(CH, &subID_all, f_any, can_on_rx_all, NULL) != CAN_OK) 
-        Serial.printf("rx all subscribe failed\n");
-    else 
-        Serial.printf("rx all subscribe completed\n");
+    // if (can_subscribe(CH, &subID_all, f_any, can_on_rx_all, NULL) != CAN_OK) 
+    //     Serial.printf("rx all subscribe failed\n");
+    // else 
+    //     Serial.printf("rx all subscribe completed\n");
 
     if (can_subscribe(CH, &subID_rx, f_list, can_on_rx, NULL) != CAN_OK) 
         Serial.printf("subscribe failed\n");
@@ -324,21 +324,31 @@ static void relay_start(AxisRuntime& rt) {
         return;
     }
 
+    AxisDir newDir = (delta > 0) ? AxisDir::ToMax : AxisDir::ToMin;
+
     float k = cfg.ms_per_unit;
     uint32_t dur = (uint32_t)(fabsf((float)delta) * k);
     if(dur < AXIS_MIN_SEG_MS) dur = AXIS_MIN_SEG_MS;
     if(dur > AXIS_MAX_SEG_MS) dur = AXIS_MAX_SEG_MS;
 
     rt.duration_ms = dur;
-    rt.start_ms = millis();
     rt.start_val = rt.current;
-    rt.dir = (delta > 0) ? AxisDir::ToMax : AxisDir::ToMin;
+    rt.dir = newDir;
     rt.isActive = true;
 
-    relay_apply_hold(cfg);
-    rt.lastApplied = AxisDir::Hold;
-    rt.phase = AxisPhase::PreHold;
-    rt.phase_ts = millis();
+    const uint32_t now = millis();
+
+    if(rt.lastApplied == newDir) {
+        rt.phase = AxisPhase::Moving;
+        rt.phase_ts = now;
+        rt.start_ms = now;
+    }
+    else {
+        relay_apply_hold(cfg);
+        rt.lastApplied = AxisDir::Hold;
+        rt.phase = AxisPhase::PreHold;
+        rt.phase_ts = now;
+    }
 }
 
 static bool relay_update(AxisRuntime& rt) {
@@ -397,22 +407,114 @@ static void relay_seq_start() {
 }
 
 static bool relay_seq_update() {
-    if (!g_ax_running) return true;
+    // 갭 상태라면, 갭이 끝났는지 검사해서 다음 축을 시작
+    if (!g_ax_running) {
+        if (g_ax_idx >= AXES_N) return true; // 모든 축 완료
 
-    if(relay_update(*AXES[g_ax_idx])) {
-        g_ax_idx++;
-        if(g_ax_idx >= AXES_N) {g_ax_running = false; return true;}
-        g_ax_gap_ms = millis();
-    }
-
-    if(!g_ax_running && g_ax_idx < AXES_N) {
-        if(millis() - g_ax_gap_ms >= AX_GAP) {
+        if (millis() - g_ax_gap_ms >= AX_GAP) {
             g_ax_running = true;
-            relay_start(*AXES[g_ax_idx]);
+            relay_start(*AXES[g_ax_idx]); // 다음 축 시작
         }
+        return false; // 아직 진행 중
     }
 
-    return false;
+    // 러닝 상태: 현재 축을 진행
+    if (relay_update(*AXES[g_ax_idx])) {
+        // 현재 축 완료
+        g_ax_idx++;
+        if (g_ax_idx >= AXES_N) {
+            g_ax_running = false;
+            return true; // 전체 완료
+        }
+        // 다음 축 시작 전 갭으로 전환
+        g_ax_running = false;
+        g_ax_gap_ms = millis();
+        return false;
+    }
+
+    return false; // 아직 진행 중
+}
+
+static inline int jog_step_for(const AxisRuntime& rt) {
+    // 세그먼트가 AXIS_MIN_SEG_MS 이상이 되도록 단위(step) 계산
+    float units = AXIS_MIN_SEG_MS / rt.config.ms_per_unit;
+    if (units < 1.0f) units = 1.0f;
+    int step = (int)ceilf(units);
+    // 한 번에 전체 스트로크를 넘지 않도록 안전 제한
+    int maxSpan = rt.config.max_val - rt.config.min_val;
+    if (step > maxSpan) step = maxSpan;
+    return step;
+}
+
+static inline int btn_sign(int b) {
+    // 0=중립, 1=플러스(+), 2=마이너스(-)
+    return (b == 1) ? +1 : (b == 2) ? -1 : 0;
+}
+
+static inline int axis_eval_now(const AxisRuntime& rt, uint32_t now) {
+    if (!rt.isActive || rt.phase != AxisPhase::Moving || rt.duration_ms == 0) return rt.current;
+    float t = (float)(now - rt.start_ms) / (float)rt.duration_ms;
+    if (t < 0) t = 0; if (t > 1) t = 1;
+    return (int)lroundf((1.0f - t) * rt.start_val + t * (float)rt.target);
+}
+
+static inline void relay_abort(AxisRuntime& rt) {
+    if (!rt.isActive) return;
+    uint32_t now = millis();
+    int cur = axis_eval_now(rt, now); // 진행 중이면 현재 위치 보간
+    rt.current = cur;
+    relay_apply_hold(rt.config);      // 핀 즉시 Hold로
+    rt.isActive   = false;
+    rt.phase      = AxisPhase::Idle;
+    rt.dir        = AxisDir::Hold;
+    rt.lastApplied= AxisDir::Hold;    // 다음에 누르면 데드타임 정상 적용
+    nv_save_currents_if_due(/*force=*/true); // 선택: 현재값 저장
+}
+
+static void relay_button(AxisRuntime& rt, int btn) {
+    int s = btn_sign(btn);                // 0, +1, -1
+    if (s == 0) {
+        relay_abort(rt);  // ★ 즉시 멈춤
+        return;
+    }
+
+    // ===== 이동 중 "같은 방향"이면 타깃을 연장 (데드타임 스킵) =====
+    if (rt.isActive && rt.phase == AxisPhase::Moving) {
+        AxisDir wantDir = (s > 0) ? AxisDir::ToMax : AxisDir::ToMin;
+        if (rt.lastApplied == wantDir) {
+            uint32_t now = millis();
+            int cur = axis_eval_now(rt, now);
+            int step = jog_step_for(rt);
+
+            int wantTarget = constrain(rt.target + s * step, rt.config.min_val, rt.config.max_val);
+            if (wantTarget != rt.target) {
+                // 지금 위치(cur)에서 새 타깃으로 계속 진행 (핀 상태/phase 유지)
+                rt.start_val   = cur;
+                rt.target      = wantTarget;
+                rt.start_ms    = now;
+                uint32_t dur   = (uint32_t)lroundf(fabsf((float)(rt.target - cur)) * rt.config.ms_per_unit);
+                if (dur < AXIS_MIN_SEG_MS) dur = AXIS_MIN_SEG_MS;
+                if (dur > AXIS_MAX_SEG_MS) dur = AXIS_MAX_SEG_MS;
+                rt.duration_ms = dur;
+                // phase=Moving / lastApplied = wantDir 그대로 유지
+            }
+            // 같은 방향 이동 연장 처리 끝
+            return;
+        }
+        // 이동 중인데 방향이 다르면 일단 업데이트 진행
+        if (!relay_update(rt)) return;
+    } else if (rt.isActive) {
+        // Moving이 아니면(PreHold/FinalHold 등) 일단 업데이트
+        if (!relay_update(rt)) return;
+    }
+
+    // ===== 여기서부터는 비활성(Idle/FinalHold 이후) 또는 갓 완료된 경우: 새 세그먼트 시작 =====
+    int step = jog_step_for(rt);
+    int nextTarget = constrain(rt.current + s * step, rt.config.min_val, rt.config.max_val);
+    if (nextTarget == rt.current) return;   // 더 갈 데 없으면 무시
+
+    rt.target = nextTarget;
+    relay_start(rt); // relay_start()는 lastApplied==dir이면 PreHold 스킵하고 Moving으로 직행
 }
 
 // REALY Function ======================================================
@@ -478,6 +580,17 @@ void fsm_setTargetStatus(const CanMessage *message) {
     RT_SEAT_FRONT.target    = constrain(message->dcu_seat_order.sig_seat_front_height, RT_SEAT_FRONT.config.min_val, RT_SEAT_FRONT.config.max_val);
     RT_SEAT_REAR.target    = constrain(message->dcu_seat_order.sig_seat_rear_height, RT_SEAT_REAR.config.min_val, RT_SEAT_REAR.config.max_val);
 }
+// 0 = 중립, 1 = 플러스, 2 = 마이너스
+int g_btn_angle = 0;
+int g_btn_pos = 0;
+int g_btn_front = 0;
+int g_btn_rear = 0;
+void fsm_setButtonStatus(const CanMessage *message) {
+    g_btn_angle = constrain(message->dcu_seat_button.sig_seat_angle_button, 0, 2);
+    g_btn_pos = constrain(message->dcu_seat_button.sig_seat_position_button, 0, 2);
+    g_btn_front = constrain(message->dcu_seat_button.sig_seat_front_height_button, 0, 2);
+    g_btn_rear = constrain(message->dcu_seat_button.sig_seat_rear_height_button, 0, 2);
+}
 
 bool fsm_handleMessage() {
     CanFrame canFrame;
@@ -487,7 +600,8 @@ bool fsm_handleMessage() {
         if(can_decode_bcan(&canFrame, &id, &message) == CAN_OK) {
             switch(id) {
                 case BCAN_ID_DCU_RESET:        fsm_enterState(State::NotReady); return true;
-                case BCAN_ID_DCU_SEAT_ORDER:  if(g_state == State::Ready) { fsm_setTargetStatus(&message); fsm_enterState(State::Busy); return true; } break;
+                case BCAN_ID_DCU_SEAT_ORDER:   if(g_state == State::Ready) { fsm_setTargetStatus(&message); fsm_enterState(State::Busy); return true; } break;
+                case BCAN_ID_DCU_SEAT_BUTTON:  if(g_state == State::Ready) { fsm_setButtonStatus(&message); } break;
             }
         }
     }
@@ -539,25 +653,26 @@ void fsm_stateNotReadyLoop() {
             if (g_ackLastTryMs == 0 || (now - g_ackLastTryMs) >= ACK_RETRY_MS) {
                 g_ackLastTryMs = now;
                 g_ackTries++;
+                fsm_enterState(State::Ready);
+                return;
+                // CanMessage msg = {0};
+                // msg.dcu_reset_ack.sig_index  = NODE_IDX;
+                // msg.dcu_reset_ack.sig_status = 1;
+                // CanFrame frame = can_encode_bcan(BCAN_ID_DCU_RESET_ACK, &msg, BCAN_DLC_DCU_RESET_ACK);
 
-                CanMessage msg = {0};
-                msg.dcu_reset_ack.sig_index  = NODE_IDX;
-                msg.dcu_reset_ack.sig_status = 1;
-                CanFrame frame = can_encode_bcan(BCAN_ID_DCU_RESET_ACK, &msg, BCAN_DLC_DCU_RESET_ACK);
-
-                if (can_send(CH, frame, 1000) == CAN_OK) {
-                    Serial.printf("[POW-SEAT] homing done, reset ack OK\n");
-                    fsm_enterState(State::Ready);
-                    return;
-                } else {
-                    Serial.printf("[POW-SEAT] reset ack failed (try %u)\n", g_ackTries);
-                    // (선택) 최대 횟수 초과 시 재초기화/알람 등
-                    if (g_ackTries >= ACK_MAX_TRIES) {
-                        // 예: CAN 재오픈 시도, 또는 잠시 대기 등
-                        // can_open 재시도 로직을 넣을 수 있음
-                        g_ackTries = 0; // 계속 시도할 거라면 카운터 리셋
-                    }
-                }
+                // if (can_send(CH, frame, 1000) == CAN_OK) {
+                //     Serial.printf("[POW-SEAT] homing done, reset ack OK\n");
+                //     fsm_enterState(State::Ready);
+                //     return;
+                // } else {
+                //     Serial.printf("[POW-SEAT] reset ack failed (try %u)\n", g_ackTries);
+                //     // (선택) 최대 횟수 초과 시 재초기화/알람 등
+                //     if (g_ackTries >= ACK_MAX_TRIES) {
+                //         // 예: CAN 재오픈 시도, 또는 잠시 대기 등
+                //         // can_open 재시도 로직을 넣을 수 있음
+                //         g_ackTries = 0; // 계속 시도할 거라면 카운터 리셋
+                //     }
+                // }
             }
             break;
         }
@@ -571,7 +686,16 @@ void fsm_onEnterReady() {
 void fsm_stateReadyLoop() {
     if (fsm_handleMessage()) return;
 
+    relay_button(RT_SEAT_POS, g_btn_pos);
+    relay_button(RT_SEAT_ANGLE, g_btn_angle);
+    relay_button(RT_SEAT_FRONT, g_btn_front);
+    relay_button(RT_SEAT_REAR, g_btn_rear);
 
+    // 2) 항상 보간을 진행하여 current를 갱신
+    (void)relay_update(RT_SEAT_POS);
+    (void)relay_update(RT_SEAT_ANGLE);
+    (void)relay_update(RT_SEAT_FRONT);
+    (void)relay_update(RT_SEAT_REAR);
 }
 
 void fsm_onEnterBusy() {
@@ -600,6 +724,7 @@ void setup() {
     nv_setup();
     can_setup();
     relay_setup();
+    sensor_setup();
     fsm_setup();
 }
 
@@ -607,5 +732,33 @@ void loop() {
     fsm_loop();
     sensor_loop();
     nv_save_currents_if_due(/*force=*/false); // ★ 선택: 주기적 저장
+    // === 디버그 출력 (1초마다) ===
+    static uint32_t lastDebugMs = 0;
+    uint32_t now = millis();
+    if(now - lastDebugMs >= 1000) {
+        lastDebugMs = now;
+
+        // FSM 상태 문자열 매핑
+        const char* stateStr = "";
+        switch (g_state) {
+            case State::NotReady: stateStr = "NotReady"; break;
+            case State::Ready:    stateStr = "Ready";    break;
+            case State::Busy:     stateStr = "Busy";     break;
+            default:              stateStr = "Unknown";  break;
+        }
+
+        // 기본 상태 출력
+        Serial.printf("[DEBUG] State=%s(%d), is_seated=%d\n", 
+                       stateStr, (int)g_state, g_isSeat ? 1 : 0);
+
+        // 각 축 출력
+        Serial.printf("  - POS:   cur=%d, active=%d\n", RT_SEAT_POS.current, RT_SEAT_POS.isActive ? 1 : 0);
+        Serial.printf("  - ANG:   cur=%d, active=%d\n", RT_SEAT_ANGLE.current, RT_SEAT_ANGLE.isActive ? 1 : 0);
+        Serial.printf("  - FRONT: cur=%d, active=%d\n", RT_SEAT_FRONT.current, RT_SEAT_FRONT.isActive ? 1 : 0);
+        Serial.printf("  - REAR:  cur=%d, active=%d\n", RT_SEAT_REAR.current, RT_SEAT_REAR.isActive ? 1 : 0);
+    }
+    // ============================
+
+
     delay(1);
 }
