@@ -18,7 +18,7 @@
       background: transparent; 
     }
     #sideBar QToolButton {
-      width: 40px; height: 40px;
+      width: 90px; height: 90px;
       border: 2px solid #333;
       border-radius: 10px;
       background: #FFFFFF;
@@ -46,7 +46,7 @@
 
 
     QToolButton#btnUp, QToolButton#btnDown {
-      min-width: 44px; min-height: 36px;
+      min-width: 44px; min-height: 100px;
       border: 2px solid #8F8F8F;
       border-radius: 8px;
       background: #BDBDBD;          
@@ -131,7 +131,7 @@
        </property>
        <property name="minimumSize">
         <size>
-         <width>56</width>
+         <width>80</width>
          <height>0</height>
         </size>
        </property>
@@ -399,7 +399,7 @@ QWidget#pageSettings QPushButton:checked {
 
 QWidget#pageSettings QToolButton#btnUp,
 QWidget#pageSettings QToolButton#btnDown {
-  min-width: 44px; min-height: 36px;
+  min-width: 44px; min-height: 100px;
   border: 2px solid #8F8F8F;
   border-radius: 8px;
   background: #BDBDBD;
@@ -608,7 +608,7 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                          <property name="minimumSize">
                           <size>
                            <width>48</width>
-                           <height>40</height>
+                           <height>104</height>
                           </size>
                          </property>
                          <property name="text">
@@ -630,7 +630,7 @@ QWidget#pageSettings QWidget#pnlSettingList QPushButton:checked {
                          <property name="minimumSize">
                           <size>
                            <width>48</width>
-                           <height>40</height>
+                           <height>104</height>
                           </size>
                          </property>
                          <property name="text">
