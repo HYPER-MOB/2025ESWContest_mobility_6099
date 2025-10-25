@@ -29,14 +29,6 @@ int main() {
         return 1;
     }
 
-    // 모든 프레임 구독(마스크 전체 0)
-    CanFilter any = { .type = CAN_FILTER_MASK };
-    any.data.mask.id = 0; any.data.mask.mask = 0;
-    if (can_subscribe(CH, any, on_rx_cb, nullptr) <= 0) {
-        std::fprintf(stderr, "can_subscribe failed\n");
-        return 1;
-    }
-
     // ===== Sequencer 구성 =====
     SequencerConfig scfg;
     scfg.can_channel     = CH;
@@ -49,6 +41,14 @@ int main() {
     Sequencer seq(scfg);
     g_seq = &seq;
 
+
+    // 모든 프레임 구독(마스크 전체 0)
+    CanFilter any = { .type = CAN_FILTER_MASK };
+    any.data.mask.id = 0; any.data.mask.mask = 0;
+    if (can_subscribe(CH, any, on_rx_cb, nullptr) <= 0) {
+        std::fprintf(stderr, "can_subscribe failed\n");
+        return 1;
+    }
     std::puts("[main] Waiting for DCU_SCA_USER_FACE_REQ(0x101) ...");
     // 메인 루프: tick() 호출로 상태 진행
     while (true) {
