@@ -90,6 +90,8 @@ MainWindow::MainWindow(QWidget *parent)
 
 
 
+    m_bStart = true;
+    showIntroSequence();
 
 }
 
@@ -177,8 +179,8 @@ void MainWindow::showIntroSequence()
             m_introLabel->deleteLater();
             m_introLabel = nullptr;
         }
-        fadeToWidget(m_auth, 320);
-        QMetaObject::invokeMethod(m_auth, "begin", Qt::QueuedConnection);
+        fadeToWidget(m_main, 320);
+        QMetaObject::invokeMethod(m_main, "begin", Qt::QueuedConnection);
     });
 
     seq->start(QAbstractAnimation::DeleteWhenStopped);
@@ -253,7 +255,7 @@ void MainWindow::startFromIntro() {
     // 4) 상태 플래그 초기화 후 인트로 애니메이션 시작
     m_bStart = false;
     // 서버가 system/start를 다시 줄 필요 없이, 로컬에서 바로 시작
-    showIntroSequence();
+    //showIntroSequence();
 
 }
 
