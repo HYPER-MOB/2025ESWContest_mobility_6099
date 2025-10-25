@@ -16,8 +16,10 @@ enum class AuthStep : uint8_t {
     Idle       = 0,
     WaitingTCU = 1,  // TCU 정보 대기
     NFC        = 2,
-    BLE        = 3,
-    Done       = 4
+    NFC_Wait        = 3,
+    BLE        = 4,
+    BLE_Wait        = 5,
+    Done       = 6
 };
 
 // 상태 플래그 (0=OK, 1=FAIL)

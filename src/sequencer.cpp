@@ -25,10 +25,57 @@ extern "C" bool sca_ble_advertise_and_wait(std::string uuid_last12,
     return p.run(cfg, out);
 }
 
+static bool hex_to_bytes_strict(const std::string& hex, uint8_t* out, int max_len, int& written) {
+    written = 0;
+    if (!out || max_len <= 0) return false;
+    if (hex.size() < 2) return false;
+    if (hex.size() % 2 != 0) return false; // 짝수 글자만 허용
 
-extern "C" bool nfc_poll_uid(std::array<uint8_t,8>& out, int timeout_s){
-    return nfc_poll_uid(out, timeout_s);
+    auto nib = [](char c)->int{
+        if ('0'<=c && c<='9') return c-'0';
+        unsigned char u = (unsigned char)std::toupper(c);
+        if ('A'<=u && u<='F') return 10 + (u-'A');
+        return -1;
+    };
+
+    const int want = (int)(hex.size()/2);
+    const int n = std::min(max_len, want);
+    for (int i=0;i<n;i++){
+        int hi = nib(hex[2*i+0]);
+        int lo = nib(hex[2*i+1]);
+        if (hi<0 || lo<0) return false;
+        out[i] = (uint8_t)((hi<<4)|lo);
+    }
+    written = n;
+    return (n>0);
 }
+
+// ==== C-ABI 구현: 선언만 있던 함수 정의를 실제로 만듭니다. ====
+// 외부에서 기대하는 심볼이 'nfc_read_uid(unsigned char*, int, int)' 이므로
+// 반드시 extern "C" 로 정의합니다.
+extern "C" bool nfc_read_uid(uint8_t* out, int len, int timeout_s) {
+    if (!out || len <= 0) return false;
+    std::memset(out, 0, (size_t)len);
+
+    sca::NfcConfig cfg{};
+    cfg.poll_seconds = (timeout_s > 0 ? timeout_s : 5);
+
+    sca::NfcResult res{};
+    if (!sca::nfc_poll_once(cfg, res)) return false;
+    if (!res.ok || res.uid_hex.empty()) return false;
+
+    int written = 0;
+    if (!hex_to_bytes_strict(res.uid_hex, out, len, written)) return false;
+
+    return (written > 0);
+}
+
+// ==== 편의 오버로드: std::array 버전 ====
+// (위 C-ABI 함수에 위임)
+bool nfc_poll_uid(std::array<uint8_t,8>& out, int timeout_s){
+    return nfc_read_uid(out.data(), (int)out.size(), timeout_s);
+}
+
 // ===== 헬퍼 =====
 std::string Sequencer::to_hex_(const uint8_t* d, size_t n) {
     static const char* k = "0123456789ABCDEF";
@@ -74,9 +121,8 @@ bool Sequencer::perform_nfc_() {
         send_auth_state_(static_cast<uint8_t>(AuthStep::NFC), AuthStateFlag::FAIL);
         return false;
     }
-
     std::array<uint8_t,8> read_uid{};
-    const bool ok = nfc_poll_uid(read_uid, cfg_.nfc_timeout_s);
+    const bool ok = nfc_poll_uid(read_uid,cfg_.nfc_timeout_s);
     if (!ok) {
         send_auth_state_(static_cast<uint8_t>(AuthStep::NFC), AuthStateFlag::FAIL);
         return false;
@@ -122,7 +168,7 @@ bool Sequencer::perform_ble_() {
 
 // ===== CAN 수신 디스패치 =====
 void Sequencer::on_can_rx(const CanFrame& f) {
-    std::printf("[TEST]\n");
+    std::printf("[TEST] %d\n",f.id);
     switch (f.id) {
     // DCU가 인증 개시
     case BCAN_ID_DCU_SCA_USER_FACE_REQ: {
@@ -171,7 +217,7 @@ void Sequencer::on_can_rx(const CanFrame& f) {
 void Sequencer::tick() {
     AuthStep cur = step_.load();
     if (!running_) return;
-
+bool ok;
     switch (cur) {
     case AuthStep::WaitingTCU: {
         // 기대 데이터가 다 모이면 NFC 단계로
@@ -181,19 +227,34 @@ void Sequencer::tick() {
         break;
     }
     case AuthStep::NFC: {
-        bool ok = perform_nfc_();
+        std::printf("[NFC]\n");
+        ok = perform_nfc_();
+            step_ = AuthStep::NFC_Wait;
+        break;
+    }
+    case AuthStep::NFC_Wait: {
         if (!ok) {
+        std::printf("[NFC] Fail\n");
             send_auth_result_(false);
             reset_to_idle_();
         } else {
+        std::printf("[NFC] End\n");
             step_ = AuthStep::BLE;
         }
         break;
     }
     case AuthStep::BLE: {
+        std::printf("[BLE]\n");
         bool ok = perform_ble_();
+            step_ = AuthStep::BLE_Wait;
+        break;
+    }
+     case AuthStep::BLE_Wait: {
+         
+        if (!ok) {
         send_auth_result_(ok);
         reset_to_idle_();
+    }
         break;
     }
     case AuthStep::Idle:
@@ -218,6 +279,8 @@ void Sequencer::send_auth_result_(bool ok) {
 }
 
 void Sequencer::ack_user_info_(uint8_t index, uint8_t state) {
+    
+    std::printf("[ACK]");
     CanFrame f{}; f.id = BCAN_ID_SCA_TCU_USER_INFO_ACK; f.dlc = 2;
     f.data[0] = index; // 1:NFC, 2:BLE
     f.data[1] = state; // 0 OK, 1 누락/실패

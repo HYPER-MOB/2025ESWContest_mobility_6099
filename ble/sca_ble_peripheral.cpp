@@ -359,6 +359,7 @@ namespace sca {
     }
 
     bool BlePeripheral::run(const BleConfig& cfg, BleResult& out) {
+		std::cerr << "[BLE] Start\n";
         cfg_ = cfg;
         res_ = BleResult{};
         service_uuid_ = build_service_uuid(cfg_.hash12);

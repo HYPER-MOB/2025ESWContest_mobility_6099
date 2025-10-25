@@ -11,9 +11,6 @@ extern "C" {
 #include <array>
 extern bool nfc_read_uid(uint8_t* out, int len, int timeout);
 
-bool nfc_poll_uid(std::array<uint8_t,8>& out, int timeout_s){
-    return nfc_read_uid(out.data(), 8, timeout_s);
-}
 static const nfc_modulation kMods[] = {
     { NMT_ISO14443A, NBR_106 },
     { NMT_FELICA,    NBR_212 },
@@ -62,11 +59,9 @@ static void dump_target_basic(const nfc_target& nt) {
 }
 bool nfc_poll_once(const NfcConfig& cfg, NfcResult& out) {
     out = NfcResult{};  // ok=false, uid_hex=""
+
     nfc_context* ctx = nullptr;
     nfc_init(&ctx);
-    
-    
-    
     if (!ctx) { std::cerr << "[NFC] nfc_init failed\n"; return false; }
 
     nfc_device* pnd = nfc_open(ctx, nullptr);
@@ -76,99 +71,66 @@ bool nfc_poll_once(const NfcConfig& cfg, NfcResult& out) {
         std::cerr << "[NFC] nfc_initiator_init failed\n";
         nfc_close(pnd); nfc_exit(ctx); return false;
     }
+
+    // ★ 블로킹 원인 제거(핵심 3줄) + 안전 타임아웃
+    nfc_device_set_property_bool(pnd, NP_INFINITE_SELECT, false);   // 무한 select 금지
+    nfc_device_set_property_bool(pnd, NP_ACTIVATE_FIELD,  true);    // 안테나 필드 ON
+    nfc_device_set_property_int (pnd, NP_TIMEOUT_COMMAND, 200);     // 명령 타임아웃
+    nfc_device_set_property_int (pnd, NP_TIMEOUT_ATR,     200);     // ATR 타임아웃
+
+    // 테스트 코드와 동일하게: ISO14443A @ 106kbps 단일 모듈
+    const nfc_modulation nm = { NMT_ISO14443A, NBR_106 };
+
     const int poll_seconds = (cfg.poll_seconds > 0 ? cfg.poll_seconds : 5);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(poll_seconds);
 
-    bool ever_detected = false;  // 한 번이라도 태그를 봤는지
+    bool ever_detected = false;
 
     while (std::chrono::steady_clock::now() < deadline) {
         nfc_target nt{};
+        // 테스트 코드와 동일 파라미터: 2회, 150ms
+        int rc = nfc_initiator_poll_target(pnd, &nm, 1, /*uiPollNr*/2, /*uiPeriod*/150, &nt);
+        std::cerr<<"TEST\n";
+        if (rc > 0) {
+            ever_detected = true;
 
-        int res = nfc_initiator_poll_target(
-            pnd,
-            kMods,
-            sizeof(kMods)/sizeof(kMods[0]),
-            /*uiPollNr*/ 2,
-            /*uiPeriod*/ 200,
-            &nt
-        );
-
-        if (res > 0) {
-    ever_detected = true;
-
-    std::string uid_hex;
-    switch (nt.nm.nmt) {
-    case NMT_ISO14443A:
-        if (nt.nti.nai.szUidLen > 0) {
-            uid_hex = to_hex(nt.nti.nai.abtUid, nt.nti.nai.szUidLen);
-            std::cout << "[NFC] ISO14443A UID=" << uid_hex << "\n";
-        } else {
-            std::cout << "[NFC] ISO14443A detected (UID 길이 0)\n";
-        }
-        break;
-
-    case NMT_ISO14443B:
-        // ISO14443B: PUPI(4바이트)
-        uid_hex = to_hex(nt.nti.nbi.abtPupi, 4);
-        std::cout << "[NFC] ISO14443B PUPI=" << uid_hex << "\n";
-        break;
-
-    case NMT_FELICA:
-        // FeliCa(IDm) 8바이트
-        uid_hex = to_hex(nt.nti.nfi.abtId, 8);
-        std::cout << "[NFC] FeliCa IDm=" << uid_hex << "\n";
-        break;
-
-    case NMT_JEWEL:
-        // ★ 버전별 필드명: abtId 아님! btId 사용
-        uid_hex = to_hex(nt.nti.nji.btId, 4);
-        std::cout << "[NFC] Jewel ID=" << uid_hex << "\n";
-        break;
-
-    default:
-        // 라이브러리 to_string이 없는 버전 대응: 최소 정보 수동 덤프
-        dump_target_basic(nt);
-        break;
-    }
-
-    if (!uid_hex.empty()) {
-        out.ok = true;
-        out.uid_hex = uid_hex;
-        nfc_initiator_deselect_target(pnd);
-        break;
-    }
-
-    nfc_initiator_deselect_target(pnd);
-
-            // UID류가 있다면 성공 처리
-            if (!uid_hex.empty()) {
-                out.ok = true;
-                out.uid_hex = uid_hex;
-                std::cout << "[NFC] UUID" << uid_hex << "\n";
-                // 다음 폴링을 위해 선택 해제(연속 동작 시 권장)
-                nfc_initiator_deselect_target(pnd);
-                break;
+            std::string uid_hex;
+            if (nt.nm.nmt == NMT_ISO14443A && nt.nti.nai.szUidLen > 0) {
+                uid_hex.reserve(nt.nti.nai.szUidLen * 2);
+                static const char* H = "0123456789ABCDEF";
+                for (size_t i=0;i<nt.nti.nai.szUidLen;i++){
+                    uint8_t b = nt.nti.nai.abtUid[i];
+                    uid_hex.push_back(H[b>>4]);
+                    uid_hex.push_back(H[b&0xF]);
+                }
+                std::cerr << "[NFC] ISO14443A UID=" << uid_hex << "\n";
+            } else {
+                dump_target_basic(nt);
             }
 
             nfc_initiator_deselect_target(pnd);
+
+            if (!uid_hex.empty()) {
+                out.ok = true;
+                out.uid_hex = std::move(uid_hex);
+                break; // 성공 종료
+            }
         }
-        else if (res == 0) {
-            // 타임슬롯 내 미검출: 너무 시끄럽지 않게 간단한 dot pace
-            static int dot = 0;
-            if ((dot++ % 4) == 0) std::cout << "[NFC] polling...\n";
+        else if (rc == 0) {
+            std::cerr << "[NFC] polling...\n";
         }
-        else { // res < 0
-            std::cerr << "[NFC] poll error (res=" << res << ")\n";
+        else { // rc < 0
+            std::cerr << "[NFC] poll error: " << nfc_strerror(pnd) << "\n";
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
     }
 
     if (!out.ok) {
         if (ever_detected) {
-            std::cout << "[NFC] 태그를 감지했지만 UID를 읽지 못했습니다.\n";
+            std::cerr << "[NFC] 태그 감지했지만 UID를 읽지 못함\n";
         } else {
-            std::cout << "[NFC] 제한시간(" << poll_seconds << "s) 내에 태그를 전혀 감지하지 못했습니다.\n";
+            std::cerr << "[NFC] 제한시간(" << poll_seconds << "s) 내 미검출\n";
         }
     }
 
