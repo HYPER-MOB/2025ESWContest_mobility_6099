@@ -93,6 +93,18 @@ private:
     void stopSiren();
 
     QString m_updateReqId;
+
+    // 버튼 전송 상태
+    QTimer* m_btnTxTimer = nullptr;
+    std::array<uint8_t,4> m_btnSeat   {0,0,0,0};     // pos, angle, front, rear
+    std::array<uint8_t,6> m_btnMirror {0,0,0,0,0,0}; // L_yaw, L_pitch, R_yaw, R_pitch, room_yaw, room_pitch
+    std::array<uint8_t,2> m_btnWheel  {0,0};         // pos, angle
+
+    void zeroAllButtonFlags();
+    bool anyButtonActive() const;
+    void txButtonFlagsImmediate();
+    void txButtonFlagsIfActive();
+    void setActiveControlFlag(bool plus, bool pressed);
 };
 
 #endif // MAINVIEW_H
