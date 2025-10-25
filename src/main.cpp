@@ -18,12 +18,12 @@ static void on_rx_cb(const CanFrame* f, void* user) {
 
 int main() {
     // ===== CAN 초기화/오픈 =====
-    if (can_init(CAN_DEVICE_DEBUG) != CAN_OK) {
+    if (can_init(CAN_DEVICE_LINUX) != CAN_OK) {
         std::fprintf(stderr, "can_init failed\n");
         return 1;
     }
     CanConfig cfg { .channel=0, .bitrate=500000, .samplePoint=0.875f, .sjw=1, .mode=CAN_MODE_NORMAL };
-    const char* CH = "debug0";
+    const char* CH = "can0";
     if (can_open(CH, cfg) != CAN_OK) {
         std::fprintf(stderr, "can_open failed\n");
         return 1;
@@ -50,7 +50,6 @@ int main() {
     g_seq = &seq;
 
     std::puts("[main] Waiting for DCU_SCA_USER_FACE_REQ(0x101) ...");
-
     // 메인 루프: tick() 호출로 상태 진행
     while (true) {
         seq.tick();

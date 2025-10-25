@@ -8,6 +8,7 @@
 
 // can_api 쪽 타입/함수
 #include "can_api.hpp"
+#include "can_ids.hpp"
 #include "canmessage.hpp"   // BCAN_ID_* 들이 정의되어 있다고 가정
 
 // 인증 단계
@@ -38,6 +39,8 @@ struct SequencerConfig {
 
     // BLE 세션/챌린지 수신 전 임시 fallback(필요시)
     std::string ble_token_fallback = "ACCESS";
+    
+    std::string ble_uuid_last12 = "A1B2C3D4E5F6";
 };
 
 class Sequencer {

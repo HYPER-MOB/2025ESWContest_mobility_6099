@@ -10,9 +10,10 @@
 #include <cstring>
 #include <cerrno>
 #include <cstdio>
+#define DBG(...) do { std::printf(__VA_ARGS__); std::printf("\n"); } while(0)
 
 static can_err_t linux_probe(Adapter* /*self*/) {
-    // 특별히 할 건 없음. 성공 가정.
+    // 특별히 할 건 없음. 성공 가정.	
     return CAN_OK;
 }
 
@@ -32,16 +33,30 @@ static int open_bind_socket(const char* ifname, int* out_fd) {
     addr.can_family  = AF_CAN;
     addr.can_ifindex = ifr.ifr_ifindex;
     if (bind(fd, (sockaddr*)&addr, sizeof(addr)) < 0) { ::close(fd); return -3; }
+int disable_fd = 0;
+setsockopt(fd, SOL_CAN_RAW, CAN_RAW_FD_FRAMES, &disable_fd, sizeof(disable_fd));
 
+// 커널 필터 전부 해제(모든 프레임 허용)
+setsockopt(fd, SOL_CAN_RAW, CAN_RAW_FILTER, NULL, 0);
+
+// ★내가 보낸 프레임도 이 소켓에서 받기(자기 루프백 허용)
+int recv_own = 1;
+setsockopt(fd, SOL_CAN_RAW, CAN_RAW_RECV_OWN_MSGS, &recv_own, sizeof(recv_own));
     *out_fd = fd;
     return 0;
 }
 
 static void rx_loop(LinuxPriv* p) {
+	std::printf("[ADP] rx_loop start fd=%d\n", p->fd);
+// 콜백 등록될 때까지 최대 200ms 대기(경합 방지)
+for (int i=0; i<200 && !p->stop.load() && p->on_rx==nullptr; ++i) usleep(1000);
+
+static uint32_t eg=0;
     while (!p->stop.load()) {
         struct can_frame fr{};
         ssize_t n = ::read(p->fd, &fr, sizeof(fr));
-        if (n == (ssize_t)sizeof(fr)) {
+        if (n == (ssize_t)sizeof(fr)) {DBG("[ADP] read classic: id=0x%03X dlc=%d", (fr.can_id & CAN_EFF_MASK), fr.can_dlc);
+            
             if (p->on_rx) {
                 CanFrame cf{};
                 cf.id  = fr.can_id & CAN_EFF_MASK; // 확장/표준 구분은 생략(마스크)
@@ -52,6 +67,7 @@ static void rx_loop(LinuxPriv* p) {
         } else {
             // EAGAIN 이면 잠깐 쉼
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			if ((++eg % 500) == 0) std::puts("[ADP] EAGAIN");
                 usleep(1000 * 1);
             } else {
                 // 치명 에러 아닐 땐 그냥 이어감
@@ -100,6 +116,7 @@ static can_err_t linux_ch_set_callbacks(
     adapter_bus_cb_t on_bus, void* on_bus_user)
 {
     if (!self || !self->priv) return CAN_ERR_INVALID;
+
     auto* p = (LinuxPriv*)self->priv;
     p->on_rx       = on_rx;
     p->on_rx_user  = on_rx_user;
@@ -119,7 +136,11 @@ static can_err_t linux_write(Adapter* self, AdapterHandle /*h*/, const CanFrame*
     std::memcpy(fr.data, cf->data, fr.can_dlc);
 
     ssize_t w = ::write(p->fd, &fr, sizeof(fr));
-    if (w != (ssize_t)sizeof(fr)) return CAN_ERR_IO;
+    if (w != (ssize_t)sizeof(fr)) {
+        std::printf("[ADP] write FAIL w=%zd errno=%d\n", w, errno);
+        return CAN_ERR_IO;
+    }
+    std::printf("[ADP] write OK id=0x%03X dlc=%d\n", fr.can_id & CAN_EFF_MASK, fr.can_dlc);
     return CAN_OK;
 }
 
@@ -136,14 +157,17 @@ static can_err_t linux_read(Adapter* self, AdapterHandle /*h*/, CanFrame* out, u
             out->id  = fr.can_id & CAN_EFF_MASK;
             out->dlc = (uint8_t)fr.can_dlc;
             std::memcpy(out->data, fr.data, out->dlc);
+            std::printf("[ADP] read(blk) id=0x%03X dlc=%d\n", out->id, out->dlc);
             return CAN_OK;
         }
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            std::printf("[ADP] read errno=%d\n", errno);
             return CAN_ERR_IO;
         }
-        usleep(1000 * 1);
+        usleep(1000);
         waited += 1;
     }
+    std::printf("[ADP] read TIMEOUT %u ms\n", timeout_ms);
     return CAN_ERR_TIMEOUT;
 }
 

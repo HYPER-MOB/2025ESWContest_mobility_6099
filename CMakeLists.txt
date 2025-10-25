@@ -43,8 +43,8 @@ target_include_directories(sca_nfc PUBLIC nfc)
 
 # 실행파일: ★ 파일 경로를 'src/'가 아니라 실제 위치로 수정
 add_executable(rpi_can_router
-  main.cpp
-  sequencer.cpp
+  src/main.cpp
+  src/sequencer.cpp
 )
 
 target_link_libraries(rpi_can_router
@@ -55,6 +55,7 @@ target_link_libraries(rpi_can_router
 target_include_directories(rpi_can_router
   PRIVATE
     ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/ble
     ${CMAKE_SOURCE_DIR}/nfc
 )

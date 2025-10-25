@@ -2,21 +2,22 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include "sca_ble_peripheral.hpp"  // nfc_poll_uid 제공
 #include "nfc_reader.hpp"  // nfc_poll_uid 제공
 #include <array>
 #include <cstdint>
 
 // ★ BLE 진입점은 기존 코드에서 제공된 함수명을 그대로 “선언”만 해줍니다.
 //   (실제 구현/링크는 sca_ble_peripheral.cpp가 담당)
-extern "C" bool sca_ble_advertise_and_wait(const char* uuid_last12,
-    const char* local_name,
+extern "C" bool sca_ble_advertise_and_wait(std::string uuid_last12,
+    std::string local_name,
     int timeout_s,
-    const char* expected_ascii) {
+    std::string expected_ascii) {
     sca::BleConfig cfg{};
     cfg.hash12 = uuid_last12;       // 12-hex (대문자 가정; 내부에서 대문자화)
-    cfg.local_name = local_name ? local_name : "SCA-CAR";
+    cfg.local_name = local_name[0]>0 ? local_name : "SCA-CAR";
     cfg.timeout_sec = timeout_s > 0 ? timeout_s : 20;
-    cfg.expected_token = expected_ascii ? expected_ascii : "";
+    cfg.expected_token = expected_ascii[0]>0 ? expected_ascii : "";
     cfg.require_encrypt = false;             // 정책 필요시 true
 
     sca::BlePeripheral p;
@@ -24,6 +25,10 @@ extern "C" bool sca_ble_advertise_and_wait(const char* uuid_last12,
     return p.run(cfg, out);
 }
 
+
+extern "C" bool nfc_poll_uid(std::array<uint8_t,8>& out, int timeout_s){
+    return nfc_poll_uid(out, timeout_s);
+}
 // ===== 헬퍼 =====
 std::string Sequencer::to_hex_(const uint8_t* d, size_t n) {
     static const char* k = "0123456789ABCDEF";
@@ -117,6 +122,7 @@ bool Sequencer::perform_ble_() {
 
 // ===== CAN 수신 디스패치 =====
 void Sequencer::on_can_rx(const CanFrame& f) {
+    std::printf("[TEST]\n");
     switch (f.id) {
     // DCU가 인증 개시
     case BCAN_ID_DCU_SCA_USER_FACE_REQ: {
