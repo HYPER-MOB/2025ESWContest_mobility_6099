@@ -393,35 +393,44 @@ static void onCanRx(const CanFrame* fr, void* user) {
         return;
     }
 
-    // 인증 결과 (can0)
-    if (fr->id == ID_SCA_DCU_AUTH_RESULT && fr->dlc >= 1) {
-        qInfo() << "[CAN0 RX] AUTH_RESULT id=0x" << QString::number(fr->id,16).toUpper()
-                << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
-        const uint8_t flag = fr->data[0];   // 0x01: fail, 그 외: ok
+    
+if (fr->id == ID_SCA_DCU_AUTH_RESULT && fr->dlc >= 1) {
+    qInfo() << "[CAN0 RX] AUTH_RESULT id=0x" << QString::number(fr->id,16).toUpper()
+            << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
 
-        if (flag == 0x01) {
-            g_accUserId.clear();
-      
-        g_currentUserId.clear();  // (추가) 캐시 초기화
-        qInfo() << "[auth] result FAIL (flag=0x01)";  // (추가) 로깅
-            if (hasClients()) sendToAll([](IpcConnection* c){
-                sendAuthResult(c, QString(), 0.0, /*error=*/1, /*reqId=*/g_lastAuthReqId);
-            });
-            return;
-        }
+    const uint8_t flag = fr->data[0];   // 0x01: fail, 그 외: ok
 
-        g_accUserId.clear();
-        if (fr->dlc >= 8) g_accUserId.append((const char*)&fr->data[1], 7);
-        
-    const QString uid = QString::fromLatin1(g_accUserId);
-    g_currentUserId = uid;                                 // (추가) 캐시 저장
-    qInfo() << "[auth] result OK  userId=" << uid;         // (추가) 로깅
+    // 새 결과 시작이므로 버퍼 리셋
+    g_accUserId.clear();
+
+    if (flag == 0x01) {
+        g_currentUserId.clear();
+        qInfo() << "[auth] result FAIL (flag=0x01)";
         if (hasClients()) {
-            const QString uid = QString::fromLatin1(g_accUserId);
-            sendToAll([uid](IpcConnection* c){ sendAuthResult(c, uid, 0.95, 0, g_lastAuthReqId); });
+            sendToAll([](IpcConnection* c){
+                sendAuthResult(c, QString(), 0.0, /*error=*/1, g_lastAuthReqId);
+            });
         }
         return;
     }
+
+    if (fr->dlc > 1) {
+        g_accUserId.append(reinterpret_cast<const char*>(fr->data + 1),
+                           fr->dlc - 1);
+    }
+
+    const QString uid = QString::fromLatin1(g_accUserId);
+    g_currentUserId = uid;
+    qInfo() << "[auth] result OK  userId=" << (uid.isEmpty() ? "<partial/empty>" : uid);
+
+    if (hasClients()) {
+        const QString uidCopy = uid; // 람다 캡처 안전
+        sendToAll([uidCopy](IpcConnection* c){
+            sendAuthResult(c, uidCopy, 0.95, 0, g_lastAuthReqId);
+        });
+    }
+    return;
+}
 
     // 인증 결과 추가 (can0)
     if (fr->id == ID_SCA_DCU_AUTH_RESULT_ADD && fr->dlc >= 1) {
