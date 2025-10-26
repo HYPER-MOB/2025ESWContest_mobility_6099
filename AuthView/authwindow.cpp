@@ -67,6 +67,11 @@ void AuthWindow::advance() {
 }
 
 void AuthWindow::onIpcMessage(const IpcMessage& msg) {
+    if (m_phase == Phase::Fail) {
+        qInfo() << "[AUTH] already in FAIL phase. ignore further messages.";
+        return;
+    }
+
     qInfo().noquote() << "[AUTH] recv <- topic=" << msg.topic
                       << " reqId=" << msg.reqId
                       << " payload=" << asJsonCompact(msg.payload);
@@ -93,9 +98,14 @@ void AuthWindow::onIpcMessage(const IpcMessage& msg) {
                 emit authFinished(p);
             });
         } else {
-            m_phase = Phase::Loading1;
-            setMessage(QStringLiteral("인증 재확인 중입니다..."), true);
-            ui->progressLine->setRange(0, 0);
+            m_phase = Phase::Fail;
+
+            if (m_timer.isActive()) m_timer.stop();
+
+            setMessage(QStringLiteral("인증이 실패했습니다."), false);
+            ui->progressLine->setRange(0, 100);
+            ui->progressLine->setValue(0);   // 0%에서 멈춘 모양으로 고정
+
         }
         return;
     }

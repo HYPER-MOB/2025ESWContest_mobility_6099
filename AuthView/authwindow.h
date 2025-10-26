@@ -23,7 +23,7 @@ private slots:
     void onWaitTimeout();
 
 private:
-    enum class Phase { Idle, Loading1, RetryNotice, Loading2, SuccessNotice, Done };
+    enum class Phase { Idle, Loading1, RetryNotice, Loading2, SuccessNotice, Done, Fail };
     void setMessage(const QString& text, bool busy);
 
     Ui::AuthWindow *ui;
