@@ -4,13 +4,14 @@
 #include <iostream>
 #include <string>
 #include <cstdint>
-
+#include <cstring>
 extern "C" {
 #include <nfc/nfc.h>
 }
 #include <array>
 extern bool nfc_read_uid(uint8_t* out, int len, int timeout);
-
+static const uint8_t AID[] = { 0xF0,0x01,0x02,0x03,0x04,0x05,0x06 };
+static const size_t AID_LEN = sizeof(AID);
 static const nfc_modulation kMods[] = {
     { NMT_ISO14443A, NBR_106 },
 };
@@ -23,7 +24,36 @@ static std::string to_hex(const uint8_t* d, size_t n) {
     for (size_t i=0;i<n;++i){ s.push_back(H[d[i]>>4]); s.push_back(H[d[i]&0xF]); }
     return s;
 }
-
+// ISO-DEP APDU 교환 (SELECT AID → 응답 0x9000이면 out_hce_hex에 데이터 저장)
+static bool try_apdu_exchange(nfc_device * pnd, std::string & out_hce_hex) {
+    uint8_t select_apdu[5 + AID_LEN];
+    select_apdu[0] = 0x00; // CLA
+    select_apdu[1] = 0xA4; // INS (SELECT)
+    select_apdu[2] = 0x04; // P1
+    select_apdu[3] = 0x00; // P2
+    select_apdu[4] = AID_LEN; // Lc
+    std::memcpy(select_apdu + 5, AID, AID_LEN);
+    
+    uint8_t resp[264];
+    int rlen = nfc_initiator_transceive_bytes(pnd, select_apdu, sizeof(select_apdu),
+    resp, sizeof(resp), 500);
+    if (rlen < 2) {
+        std::cerr << "[NFC] APDU failed len=" << rlen << "\n";
+        return false;
+    }
+    uint8_t sw1 = resp[rlen - 2], sw2 = resp[rlen - 1];
+    std::cout << "[NFC] APDU resp (" << rlen << "B): ";
+    for (int i = 0; i < rlen; i++) printf("%02X ", resp[i]);
+    std::cout << "\n";
+    if (sw1 == 0x90 && sw2 == 0x00) {
+        int dlen = rlen - 2;
+        if (dlen > 0) {
+            out_hce_hex = to_hex(resp, dlen);
+            return true;
+        }    
+    }
+    return false;
+}
 static std::string normalize_hex(std::string s) {
     // 공백/하이픈 제거 + 대문자화
     std::string t; t.reserve(s.size());
@@ -70,7 +100,7 @@ bool nfc_poll_once(const NfcConfig& cfg, NfcResult& out) {
     // ★ 블로킹 원인 제거(핵심 3줄) + 안전 타임아웃
     nfc_device_set_property_bool(pnd, NP_INFINITE_SELECT, false);   // 무한 select 금지
     nfc_device_set_property_bool(pnd, NP_ACTIVATE_FIELD,  true);    // 안테나 필드 ON
-    nfc_device_set_property_int (pnd, NP_TIMEOUT_COMMAND, 200);     // 명령 타임아웃
+    nfc_device_set_property_int (pnd, NP_TIMEOUT_COMMAND, 500);     // 명령 타임아웃
     nfc_device_set_property_int (pnd, NP_TIMEOUT_ATR,     200);     // ATR 타임아웃
 
 
@@ -81,11 +111,10 @@ bool nfc_poll_once(const NfcConfig& cfg, NfcResult& out) {
 
     while (std::chrono::steady_clock::now() < deadline) {
         nfc_target nt{};
-        // 테스트 코드와 동일 파라미터: 2회, 150ms
         int rc = nfc_initiator_poll_target(pnd, kMods, 1, /*uiPollNr*/2, /*uiPeriod*/200, &nt);
         if (rc > 0) {
             ever_detected = true;
-            std::string uid_hex;
+            std::string uid_hex, hce_hex;
             switch (nt.nm.nmt) {
             case NMT_ISO14443A:
                 if (nt.nti.nai.szUidLen > 0) {
@@ -93,6 +122,14 @@ bool nfc_poll_once(const NfcConfig& cfg, NfcResult& out) {
                     std::cout << "[NFC] ISO14443A UID=" << uid_hex << "\n";
                 } else {
                     std::cout << "[NFC] ISO14443A detected (UID len=0)\n";
+                } // ★ ISO-DEP APDU 시도 → 성공 시 hce_hex 사용
+                if (try_apdu_exchange(pnd, hce_hex)) {
+                    out.ok = true;
+                    out.uid_hex = hce_hex;
+                }
+                else if (!uid_hex.empty()) {
+                    out.ok = true;
+                    out.uid_hex = uid_hex;
                 }
                 break;
             default:
@@ -104,9 +141,7 @@ bool nfc_poll_once(const NfcConfig& cfg, NfcResult& out) {
             nfc_initiator_deselect_target(pnd);
 
             // UID를 얻었으면 여기서 결과 확정
-            if (!uid_hex.empty()) {
-                out.ok = true;
-                out.uid_hex = uid_hex;
+            if (out.ok) {
                 break;
             }
         }
