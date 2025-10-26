@@ -245,7 +245,7 @@ namespace sca {
             if (options) g_variant_unref(options);
             if (value)   g_variant_unref(value);
 
-            // Á¾·á
+            // ï¿½ï¿½ï¿½ï¿½
             self->quit_loop(self->res_.ok);
             return;
         }
@@ -289,7 +289,7 @@ namespace sca {
         reg_objmgr_ = g_dbus_connection_register_object(conn_, APP_PATH, objmgr_node->interfaces[0], &OBJMGR_VTABLE, nullptr, nullptr, &err);
         if (!reg_objmgr_) { std::cerr << "[BLE] reg objmgr: " << (err ? err->message : "unknown") << "\n"; if (err)g_error_free(err); return false; }
 
-        // ³ëµåÁ¤º¸´Â µî·Ï ÈÄ ÇØÁ¦ÇØµµ µÊ (bluez°¡ ÂüÁ¶ º¸°ü)
+        // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Øµï¿½ ï¿½ï¿½ (bluezï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½)
         g_dbus_node_info_unref(service_node);
         g_dbus_node_info_unref(char_node);
         g_dbus_node_info_unref(adv_node);
@@ -372,7 +372,7 @@ namespace sca {
         if (adapter.empty()) { std::cerr << "[BLE] no adapter\n"; return false; }
         res_.adapter_path = adapter;
 
-        // ±âº» ¾î´ðÅÍ »óÅÂ
+        // ï¿½âº» ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
         call_set(adapter, "org.bluez.Adapter1", "Powered", g_variant_new_boolean(TRUE));
         call_set(adapter, "org.bluez.Adapter1", "Discoverable", g_variant_new_boolean(TRUE));
         call_set(adapter, "org.bluez.Adapter1", "Pairable", g_variant_new_boolean(TRUE));
@@ -388,7 +388,7 @@ namespace sca {
             << " encrypt=" << (cfg_.require_encrypt ? "on" : "off")
             << " timeout=" << cfg_.timeout_sec << "s\n";
 
-        // Å¸ÀÓ¾Æ¿ô Å¸ÀÌ¸Ó
+        // Å¸ï¿½Ó¾Æ¿ï¿½ Å¸ï¿½Ì¸ï¿½
         loop_ = g_main_loop_new(nullptr, FALSE);
         g_timeout_add_seconds(cfg_.timeout_sec, [](gpointer)->gboolean {
             auto* self = BlePeripheral::s_self; if (!self) return G_SOURCE_REMOVE;
@@ -400,10 +400,10 @@ namespace sca {
             return G_SOURCE_REMOVE;
             }, nullptr);
 
-        // ·çÇÁ
+        // ï¿½ï¿½ï¿½ï¿½
         g_main_loop_run(loop_);
 
-        // Á¤¸®
+        // ï¿½ï¿½ï¿½ï¿½
         unregister_adv(adapter);
         unexport_objects();
         if (loop_) { g_main_loop_unref(loop_); loop_ = nullptr; }

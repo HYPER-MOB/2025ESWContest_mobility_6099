@@ -4,15 +4,15 @@
 namespace sca {
 
 	struct NfcConfig {
-		int poll_seconds{ 5 };    // Æú¸µ ½Ã°£ Á¦ÇÑ
+		int poll_seconds{ 5 };    // ï¿½ï¿½ï¿½ï¿½ ï¿½Ã°ï¿½ ï¿½ï¿½ï¿½ï¿½
 	};
 
 	struct NfcResult {
-		bool ok{ false };         // UID¸¦ ÀÐ¾ú´ÂÁö
-		std::string uid_hex;    // ÀÐÈù UID (´ë¹®ÀÚ HEX ¿¬¼Ó¹®ÀÚ)
+		bool ok{ false };         // UIDï¿½ï¿½ ï¿½Ð¾ï¿½ï¿½ï¿½ï¿½ï¿½
+		std::string uid_hex;    // ï¿½ï¿½ï¿½ï¿½ UID (ï¿½ë¹®ï¿½ï¿½ HEX ï¿½ï¿½ï¿½Ó¹ï¿½ï¿½ï¿½)
 	};
 
-	// °£´Ü libnfc ±â¹Ý Æú¸µ(³»Àå). ¼º°ø ½Ã true
+	// ï¿½ï¿½ï¿½ï¿½ libnfc ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½). ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ true
 	bool nfc_poll_once(const NfcConfig& cfg, NfcResult& out);
 
 } // namespace sca

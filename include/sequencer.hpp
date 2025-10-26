@@ -6,15 +6,15 @@
 #include <optional>
 #include <string>
 
-// can_api ÂÊ Å¸ÀÔ/ÇÔ¼ö
+// can_api ï¿½ï¿½ Å¸ï¿½ï¿½/ï¿½Ô¼ï¿½
 #include "can_api.hpp"
 #include "can_ids.hpp"
-#include "canmessage.hpp"   // BCAN_ID_* µéÀÌ Á¤ÀÇµÇ¾î ÀÖ´Ù°í °¡Á¤
+#include "canmessage.hpp"   // BCAN_ID_* ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ÇµÇ¾ï¿½ ï¿½Ö´Ù°ï¿½ ï¿½ï¿½ï¿½ï¿½
 
-// ÀÎÁõ ´Ü°è
+// ï¿½ï¿½ï¿½ï¿½ ï¿½Ü°ï¿½
 enum class AuthStep : uint8_t {
     Idle       = 0,
-    WaitingTCU = 1,  // TCU Á¤º¸ ´ë±â
+    WaitingTCU = 1,  // TCU ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½
     NFC        = 2,
     NFC_Wait        = 3,
     BLE        = 4,
@@ -22,24 +22,25 @@ enum class AuthStep : uint8_t {
     Done       = 6
 };
 
-// »óÅÂ ÇÃ·¡±× (0=OK, 1=FAIL)
+// ï¿½ï¿½ï¿½ï¿½ ï¿½Ã·ï¿½ï¿½ï¿½ (0=OK, 1=FAIL)
 enum class AuthStateFlag : uint8_t {
     OK    = 0,
     FAIL  = 1
 };
 
 struct SequencerConfig {
-    std::string can_channel = "debug0";
+    std::string can_channel = "can0";
     uint32_t    can_bitrate = 500000;
 
-    // BLE ±¤°í ÆÄ¶ó¹ÌÅÍ
+    // BLE ï¿½ï¿½ï¿½ï¿½ ï¿½Ä¶ï¿½ï¿½ï¿½ï¿½
     std::string ble_local_name = "SCA-CAR";
     int         ble_timeout_s  = 30;
 
-    // NFC Æú¸µ Å¸ÀÓ¾Æ¿ô
+    // NFC ï¿½ï¿½ï¿½ï¿½ Å¸ï¿½Ó¾Æ¿ï¿½
     int         nfc_timeout_s  = 5;
+    std::string expected_uid_hex;
 
-    // BLE ¼¼¼Ç/Ã§¸°Áö ¼ö½Å Àü ÀÓ½Ã fallback(ÇÊ¿ä½Ã)
+    // BLE ï¿½ï¿½ï¿½ï¿½/Ã§ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½Ó½ï¿½ fallback(ï¿½Ê¿ï¿½ï¿½)
     std::string ble_token_fallback = "ACCESS";
     
     std::string ble_uuid_last12 = "A1B2C3D4E5F6";
@@ -49,38 +50,39 @@ class Sequencer {
 public:
     explicit Sequencer(const SequencerConfig& cfg);
 
-    // CAN ¼ö½Å ÈÅ(main¿¡¼­ can_subscribe ÄÝ¹éÀ¸·Î È£Ãâ)
+    // CAN ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½(mainï¿½ï¿½ï¿½ï¿½ can_subscribe ï¿½Ý¹ï¿½ï¿½ï¿½ï¿½ï¿½ È£ï¿½ï¿½)
     void on_can_rx(const CanFrame& f);
 
-    // (main loop) »óÅÂ¸Ó½Å ÇÑ ½ºÅÜ
+    // (main loop) ï¿½ï¿½ï¿½Â¸Ó½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
     void tick();
 
 private:
-    // »óÅÂ
+    // ï¿½ï¿½ï¿½ï¿½
+    bool ok;
     SequencerConfig cfg_;
     std::atomic<AuthStep> step_{AuthStep::Idle};
     std::mutex m_;
     bool running_ = false;
 
-    // TCU Á¦°ø ±â´ë°ª
+    // TCU ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ë°ª
     std::array<uint8_t,8> expected_nfc_{};    bool have_expected_nfc_  = false;
     std::array<uint8_t,4> ble_sess_{};        bool have_ble_sess_      = false;
     std::array<uint8_t,4> ble_chal_{};        bool have_ble_chal_      = false;
 
-    // ³»ºÎ À¯Æ¿
+    // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Æ¿
     void reset_to_idle_();
 
-    // ´Ü°èº° µ¿ÀÛ
-    void start_sequence_();               // DCU Æ®¸®°Å ¼ö½Å
+    // ï¿½Ü°èº° ï¿½ï¿½ï¿½ï¿½
+    void start_sequence_();               // DCU Æ®ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
     void request_user_info_to_tcu_();     // 0x102
-    bool perform_nfc_();                  // NFC Æú¸µ ¡æ ±â´ë°ª°ú ºñ±³
-    bool perform_ble_();                  // BLE ÅäÅ« ¼ö½Å/°ËÁõ
+    bool perform_nfc_();                  // NFC ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ë°ªï¿½ï¿½ ï¿½ï¿½
+    bool perform_ble_();                  // BLE ï¿½ï¿½Å« ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½
 
-    // °á°ú/»óÅÂ ÅëÁö
+    // ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
     void send_auth_state_(uint8_t step, AuthStateFlag flg);  // 0x103
     void send_auth_result_(bool ok);                         // 0x112
     void ack_user_info_(uint8_t index, uint8_t state);       // 0x111
 
-    // ÇïÆÛ
+    // ï¿½ï¿½ï¿½ï¿½
     static std::string to_hex_(const uint8_t* d, size_t n);
 };

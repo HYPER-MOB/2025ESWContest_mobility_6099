@@ -5,19 +5,19 @@
 #include <glib.h>
 
 /*
- * BlueZ GATT Peripheral¸¦ ÇÁ·Î¼¼½º ³»¿¡¼­ Á÷Á¢ ±¸µ¿ÇÏ´Â ¸ðµâ.
- * ±âÁ¸ ´Üµ¶ ½ÇÇàÆÄÀÏ(main) ÇüÅÂ¿´´ø ÄÚµå¸¦ ¶óÀÌºê·¯¸®È­ÇÔ.
+ * BlueZ GATT Peripheralï¿½ï¿½ ï¿½ï¿½ï¿½Î¼ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ï´ï¿½ ï¿½ï¿½ï¿½.
+ * ï¿½ï¿½ï¿½ï¿½ ï¿½Üµï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½(main) ï¿½ï¿½ï¿½Â¿ï¿½ï¿½ï¿½ ï¿½Úµå¸¦ ï¿½ï¿½ï¿½Ìºê·¯ï¿½ï¿½È­ï¿½ï¿½.
  *
- * µ¿ÀÛ:
- *  - ÁöÁ¤ÇÑ Service UUID¿Í Characteristic(UUID °íÁ¤)·Î Peripheral µî·Ï
- *  - ½º¸¶Æ®ÆùÀÌ Char¿¡ ¾²±â(Write)ÇÏ¸é ÄÝ¹é/°á°ú ÅëÇØ Àü´Þ
- *  - Å¸ÀÓ¾Æ¿ô/Á¤¸®±îÁö ³»ºÎ¿¡¼­ ¼öÇà
+ * ï¿½ï¿½ï¿½ï¿½:
+ *  - ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Service UUIDï¿½ï¿½ Characteristic(UUID ï¿½ï¿½ï¿½ï¿½)ï¿½ï¿½ Peripheral ï¿½ï¿½ï¿½
+ *  - ï¿½ï¿½ï¿½ï¿½Æ®ï¿½ï¿½ï¿½ï¿½ Charï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½(Write)ï¿½Ï¸ï¿½ ï¿½Ý¹ï¿½/ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+ *  - Å¸ï¿½Ó¾Æ¿ï¿½/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Î¿ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
  */
 
 namespace sca {
 
     struct BleConfig {
-        std::string hash12;          // UUIDÀÇ ¸¶Áö¸· 12ÀÚ¸®(¿¹: "A1B2C3D4E5F6")
+        std::string hash12;          // UUIDï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 12ï¿½Ú¸ï¿½(ï¿½ï¿½: "A1B2C3D4E5F6")
         std::string local_name{ "SCA-CAR" };
         std::string expected_token{ "ACCESS" };
         int         timeout_sec{ 30 };
@@ -25,10 +25,10 @@ namespace sca {
     };
 
     struct BleResult {
-        bool ok{ false };              // expected_token°ú ÀÏÄ¡ÇÏ´Â µ¥ÀÌÅÍ°¡ ¾²ÀÌ¸é true
-        bool wrote{ false };           // ¾î¶² °ªÀÌµç Write ÀÌº¥Æ®°¡ ¹ß»ýÇß´ÂÁö
-        std::string written_data;    // Å¬¶óÀÌ¾ðÆ®°¡ ¾´ µ¥ÀÌÅÍ(±×´ë·Î ÅØ½ºÆ®·Î)
-        std::string adapter_path;    // »ç¿ëµÈ ¾î´ðÅÍ °æ·Î
+        bool ok{ false };              // expected_tokenï¿½ï¿½ ï¿½ï¿½Ä¡ï¿½Ï´ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Í°ï¿½ ï¿½ï¿½ï¿½Ì¸ï¿½ true
+        bool wrote{ false };           // ï¿½î¶² ï¿½ï¿½ï¿½Ìµï¿½ Write ï¿½Ìºï¿½Æ®ï¿½ï¿½ ï¿½ß»ï¿½ï¿½ß´ï¿½ï¿½ï¿½
+        std::string written_data;    // Å¬ï¿½ï¿½ï¿½Ì¾ï¿½Æ®ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½(ï¿½×´ï¿½ï¿½ ï¿½Ø½ï¿½Æ®ï¿½ï¿½)
+        std::string adapter_path;    // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½
     };
 
     class BlePeripheral {
@@ -36,12 +36,12 @@ namespace sca {
         BlePeripheral();
         ~BlePeripheral();
 
-        // µ¿±â ½ÇÇà: µî·Ï ¡æ ±¤°í ¡æ (Write ¼ö½Å or Å¸ÀÓ¾Æ¿ô) ¡æ Á¤¸® ¡æ °á°ú ¹ÝÈ¯
-        // ¼º°ø(ÅäÅ«ÀÏÄ¡) ½Ã true, ¾Æ´Ï¸é false
+        // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ (Write ï¿½ï¿½ï¿½ï¿½ or Å¸ï¿½Ó¾Æ¿ï¿½) ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½È¯
+        // ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½Å«ï¿½ï¿½Ä¡) ï¿½ï¿½ true, ï¿½Æ´Ï¸ï¿½ false
         bool run(const BleConfig& cfg, BleResult& out);
 
     private:
-        // ³»ºÎ »óÅÂ
+        // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
         BleConfig cfg_;
         BleResult res_;
         std::string service_uuid_;
@@ -60,22 +60,22 @@ namespace sca {
         const char* CHAR_PATH = "/com/sca/app/service0/char0";
         const char* ADV_PATH = "/com/sca/app/adv0";
 
-        // ³»ºÎ À¯Æ¿
+        // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Æ¿
         static std::string build_service_uuid(const std::string& hash12);
         std::string get_adapter_path();
         bool call_set(const std::string& objpath, const char* iface, const char* prop, GVariant* v);
 
-        // µî·Ï/ÇØÁ¦
+        // ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½
         bool export_objects();
         void unexport_objects();
         bool register_app(const std::string& adapter);
         bool register_adv(const std::string& adapter);
         void unregister_adv(const std::string& adapter);
 
-        // ÄÝ¹é/Á¤¸®
+        // ï¿½Ý¹ï¿½/ï¿½ï¿½ï¿½ï¿½
         void quit_loop(bool ok);
 
-        // Á¤Àû ÇÚµé·¯¿¡¼­ this¸¦ ¾²±â À§ÇØ static º¸°ü
+        // ï¿½ï¿½ï¿½ï¿½ ï¿½Úµé·¯ï¿½ï¿½ï¿½ï¿½ thisï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ static ï¿½ï¿½ï¿½ï¿½
         static BlePeripheral* s_self;
 
         // ==== DBus XML/VTABLE ====
@@ -107,7 +107,7 @@ namespace sca {
         static const GDBusInterfaceVTable ADV_VTABLE;
         static const GDBusInterfaceVTable OBJMGR_VTABLE;
 
-        // ³»ºÎ ÇÃ·¡±×
+        // ï¿½ï¿½ï¿½ï¿½ ï¿½Ã·ï¿½ï¿½ï¿½
         bool done_{ false };
         bool ok_{ false };
     };

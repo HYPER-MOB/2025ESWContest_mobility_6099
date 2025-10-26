@@ -2,26 +2,63 @@
 #include <thread>
 #include <chrono>
 
-// ³×°¡ °¡Áø C++ ·¡ÆÛ Çì´õ
+// ï¿½×°ï¿½ ï¿½ï¿½ï¿½ï¿½ C++ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½
 #include "can_api.hpp"
 
 #include "sequencer.hpp"
 
-// CAN Äİ¹é: ¸ğµç ÇÁ·¹ÀÓÀ» sequencer·Î Àü´Ş
+// CAN ï¿½İ¹ï¿½: ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ sequencerï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 static Sequencer* g_seq = nullptr;
 
-// ±âÁ¸ can_api.hppÀÇ Äİ¹é ½Ã±×´ÏÃ³¿¡ ¸ÂÃç ÀÛ¼º
+static int run_cmd(const char* cmd) {
+    int rc = std::system(cmd);
+    if (rc != 0) std::fprintf(stderr, "[can0] cmd failed (%d): %s\n", rc, cmd);
+    return rc;
+}
+
+bool bringup_can0(unsigned bitrate = 500000, bool canfd = false) {
+    // ë‚´ë ¤ë‘ê³  ì‹œì‘(ì—ëŸ¬ ë¬´ì‹œ)
+    run_cmd("ip link set can0 down 2>/dev/null || true");
+
+    char buf[256];
+    if (canfd) {
+        std::snprintf(buf, sizeof(buf),
+            "ip link set can0 type can bitrate %u dbitrate 2000000 fd on", bitrate);
+    } else {
+        std::snprintf(buf, sizeof(buf),
+            "ip link set can0 type can bitrate %u", bitrate);
+    }
+    if (run_cmd(buf) != 0) return false;
+
+    run_cmd("ip link set can0 txqueuelen 1024");
+
+    if (run_cmd("ip link set can0 up") != 0) return false;
+
+    return true;
+}
+
+void bringdown_can0() {
+    run_cmd("ip link set can0 down 2>/dev/null || true");
+}
+// ï¿½ï¿½ï¿½ï¿½ can_api.hppï¿½ï¿½ ï¿½İ¹ï¿½ ï¿½Ã±×´ï¿½Ã³ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Û¼ï¿½
 static void on_rx_cb(const CanFrame* f, void* user) {
     (void)user;
     if (g_seq && f) g_seq->on_can_rx(*f);
 }
 
 int main() {
-    // ===== CAN ÃÊ±âÈ­/¿ÀÇÂ =====
+    
+    if (!bringup_can0(500000, /*canfd=*/false)) {
+    std::fprintf(stderr, "[can0] bringup failed\n");
+    // í•„ìš”ì‹œ ì¢…ë£Œ ë˜ëŠ” ì¬ì‹œë„
+    }
+    
+    // ===== CAN ï¿½Ê±ï¿½È­/ï¿½ï¿½ï¿½ï¿½ =====
     if (can_init(CAN_DEVICE_LINUX) != CAN_OK) {
         std::fprintf(stderr, "can_init failed\n");
         return 1;
     }
+
     CanConfig cfg { .channel=0, .bitrate=500000, .samplePoint=0.875f, .sjw=1, .mode=CAN_MODE_NORMAL };
     const char* CH = "can0";
     if (can_open(CH, cfg) != CAN_OK) {
@@ -29,20 +66,20 @@ int main() {
         return 1;
     }
 
-    // ===== Sequencer ±¸¼º =====
+    // ===== Sequencer ï¿½ï¿½ï¿½ï¿½ =====
     SequencerConfig scfg;
     scfg.can_channel     = CH;
     scfg.can_bitrate     = 500000;
     scfg.ble_local_name  = "SCA-CAR";
     scfg.ble_timeout_s   = 30;
     scfg.nfc_timeout_s   = 5;
-    scfg.ble_uuid_last12 = "A1B2C3D4E5F6"; // ÇÊ¿ä½Ã Á¤Ã¥¿¡ ¸Â°Ô º¯°æ
+    scfg.ble_uuid_last12 = "A1B2C3D4E5F6"; // ï¿½Ê¿ï¿½ï¿½ ï¿½ï¿½Ã¥ï¿½ï¿½ ï¿½Â°ï¿½ ï¿½ï¿½ï¿½ï¿½
 
     Sequencer seq(scfg);
     g_seq = &seq;
 
 
-    // ¸ğµç ÇÁ·¹ÀÓ ±¸µ¶(¸¶½ºÅ© ÀüÃ¼ 0)
+    // ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½Å© ï¿½ï¿½Ã¼ 0)
     CanFilter any = { .type = CAN_FILTER_MASK };
     any.data.mask.id = 0; any.data.mask.mask = 0;
     if (can_subscribe(CH, any, on_rx_cb, nullptr) <= 0) {
@@ -50,12 +87,12 @@ int main() {
         return 1;
     }
     std::puts("[main] Waiting for DCU_SCA_USER_FACE_REQ(0x101) ...");
-    // ¸ŞÀÎ ·çÇÁ: tick() È£Ãâ·Î »óÅÂ ÁøÇà
+    // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½: tick() È£ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
     while (true) {
         seq.tick();
         std::this_thread::sleep_for(std::chrono::milliseconds(50)); // 20Hz
     }
 
-    // can_dispose(); // µµ´ŞÇÏÁö ¾ÊÀ½
+    // can_dispose(); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
     // return 0;
 }

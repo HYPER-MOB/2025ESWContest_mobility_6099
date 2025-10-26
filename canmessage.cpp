@@ -1,6 +1,6 @@
 #include "canmessage.hpp"
 #include <cstring>
-
+#include <iostream>
 // 그대로 C++로 옮김  :contentReference[oaicite:3]{index=3}
 CanFrame can_encode(can_msg_id_t id, const CanMessage* msg, uint8_t dlc) {
     CanFrame fr{};                 // C++ value-init
