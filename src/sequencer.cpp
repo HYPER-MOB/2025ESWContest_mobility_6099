@@ -82,7 +82,8 @@ void Sequencer::reset_to_idle_() {
     step_ = AuthStep::Idle;
     running_ = false;
     have_expected_nfc_ = false;
-    have_ble_sess_ = have_ble_chal_ = false;
+    have_ble_sess_ = false;
+    have_collected_cam_ = false;
 }
 void Sequencer::start_sequence_() {
     if (running_) return;

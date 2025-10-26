@@ -18,7 +18,7 @@ enum class AuthStep : uint8_t {
     CAM     = 4,
     NFC_Wait   = 5,
     BLE_Wait   = 6,
-    CAME_Wait= 7,
+    CAM_Wait= 7,
     Done       = 8
 };
 
@@ -66,6 +66,7 @@ private:
     void request_user_info_to_tcu_();   
     bool perform_nfc_();  
     bool perform_ble_();
+    bool perform_cam_();
 
     void send_auth_state_(uint8_t step, AuthStateFlag flg);  // 0x103
     void send_auth_result_(bool ok);                         // 0x112
