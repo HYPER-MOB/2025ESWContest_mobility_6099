@@ -126,10 +126,12 @@ bool nfc_poll_once(const NfcConfig& cfg, NfcResult& out) {
                 if (try_apdu_exchange(pnd, hce_hex)) {
                     out.ok = true;
                     out.uid_hex = hce_hex;
+                    out.use_apdu = true;
                 }
                 else if (!uid_hex.empty()) {
                     out.ok = true;
                     out.uid_hex = uid_hex;
+                    out.use_apdu = false;
                 }
                 break;
             default:

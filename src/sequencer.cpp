@@ -58,7 +58,13 @@ extern "C" bool nfc_read_uid(uint8_t* out, int len, int timeout_s) {
     if (!res.ok || res.uid_hex.empty()) return false;
     
     int written=0;
-    bytes_from_hex_relaxed(res.uid_hex, out, sizeof(out), written);
+    
+    bytes_from_hex_relaxed((res.use_apdu? res.uid_hex : res.uid_hex+6), out, sizeof(out), written);
+    for (int i = 0; i < len; i++)
+    {
+        std::printf("%02X ", out[i]);
+    }
+    std::printf("\n");
     return (written > 0);
 }
 
