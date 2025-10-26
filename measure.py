@@ -68,15 +68,18 @@ def arm_length(side='LEFT'):
         return None
     upper = euclid(lm[SHOULDER], lm[ELBOW], w, h)
     lower = euclid(lm[ELBOW], lm[WRIST], w, h)
-    return (upper + lower) * scale
+    return upper * scale, lower * scale
 
-left_arm = arm_length('LEFT')
-right_arm = arm_length('RIGHT')
-arm_len_cm = None
-if left_arm and right_arm:
-    arm_len_cm = (left_arm + right_arm) / 2.0
+left_upper_arm, left_forearm = arm_length('LEFT')
+right_upper_arm, right_forarm = arm_length('RIGHT')
+upper_arm_len_cm = None
+forearm_len_cm = None
+if left_upper_arm and right_upper_arm:
+    upper_arm_len_cm = (left_upper_arm + right_upper_arm) / 2.0
+    forearm_len_cm = (left_forearm + right_forarm) / 2.0
 else:
-    arm_len_cm = left_arm or right_arm
+    upper_arm_len_cm = left_upper_arm or right_upper_arm
+    forearm_len_cm = left_forearm or right_forarm
 
 def leg_length(side='LEFT'):
     HIP   = getattr(POSE_LM, f"{side}_HIP")
@@ -86,15 +89,18 @@ def leg_length(side='LEFT'):
         return None
     upper = euclid(lm[HIP], lm[KNEE], w, h)
     lower = euclid(lm[KNEE], lm[ANKLE], w, h)
-    return (upper + lower) * scale
+    return upper * scale, lower * scale
 
-left_leg = leg_length('LEFT')
-right_leg = leg_length('RIGHT')
-leg_len_cm = None
-if left_leg and right_leg:
-    leg_len_cm = (left_leg + right_leg) / 2.0
+left_thigh, left_calf = leg_length('LEFT')
+right_thigh, right_calf = leg_length('RIGHT')
+thigh_len_cm = None
+calf_len_cm = None
+if left_thigh and right_thigh:
+    thigh_len_cm = (left_thigh + right_thigh) / 2.0
+    calf_len_cm = (left_calf + right_calf) / 2.0
 else:
-    leg_len_cm = left_leg or right_leg
+    thigh_len_cm = left_thigh or right_thigh
+    calf_len_cm = left_calf or right_calf
 
 if min(lm[POSE_LM.LEFT_SHOULDER].visibility, lm[POSE_LM.RIGHT_SHOULDER].visibility,
        lm[POSE_LM.LEFT_HIP].visibility, lm[POSE_LM.RIGHT_HIP].visibility) >= 0.5:
@@ -139,8 +145,10 @@ overlay_path = "measurement_overlay.jpg"     # 결과 이미지 저장 경로
 cv2.imwrite(overlay_path, overlay)
 print({
     "scale_cm_per_px": round(scale, 4),
-    "arm_cm": round(arm_len_cm, 1) if arm_len_cm else None,
-    "leg_cm": round(leg_len_cm, 1) if leg_len_cm else None,
+    "upper_arm_cm": round(upper_arm_len_cm, 1) if upper_arm_len_cm else None,
+    "forearm_cm": round(forearm_len_cm, 1) if forearm_len_cm else None,
+    "thigh_cm": round(thigh_len_cm, 1) if thigh_len_cm else None,
+    "calf_cm": round(calf_len_cm, 1) if calf_len_cm else None,
     "torso_cm": round(torso_cm, 1) if torso_cm else None,
     "output_image": overlay_path
 })
