@@ -230,6 +230,7 @@ void Sequencer::tick() {
         } else {
         std::printf("[NFC] End\n");
             step_ = AuthStep::BLE;
+        send_auth_result_(true);
         }
         break;
     }
@@ -243,13 +244,20 @@ void Sequencer::tick() {
          
         if (!ok) {
         std::printf("[BLE] Fail\n");
-    }
+        send_auth_result_(false);
+        reset_to_idle_();
+        }
     else{
         std::printf("[BLE] End\n");
+        send_auth_result_(true);
     }
-        send_auth_result_(ok);
-        reset_to_idle_();
         break;
+    }
+    case AuthStep::CAMERA:{
+
+    }
+    case AuthStep::CAMERA_Wait:{
+
     }
     case AuthStep::Idle:
     case AuthStep::Done:

@@ -188,7 +188,7 @@ namespace sca {
                 return g_variant_new_strv(flags, -1);
             }
             else {
-                const gchar* flags[] = { "write",nullptr };
+                const gchar* flags[] = { "write","write-without-response",nullptr };
                 return g_variant_new_strv(flags, -1);
             }
         }

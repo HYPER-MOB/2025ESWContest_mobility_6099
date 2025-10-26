@@ -16,10 +16,12 @@ enum class AuthStep : uint8_t {
     Idle       = 0,
     WaitingTCU = 1,  // TCU ���� ���
     NFC        = 2,
-    NFC_Wait        = 3,
+    NFC_Wait   = 3,
     BLE        = 4,
-    BLE_Wait        = 5,
-    Done       = 6
+    BLE_Wait   = 5,
+    CAMERA     = 6,
+    CAMERA_Wait= 7,
+    Done       = 8
 };
 
 // ���� �÷��� (0=OK, 1=FAIL)
