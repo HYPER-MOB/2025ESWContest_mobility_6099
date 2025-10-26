@@ -211,6 +211,7 @@ void Sequencer::tick() {
             send_auth_state_(static_cast<uint8_t>(AuthStep::NFC), AuthStateFlag::OK);
             send_auth_result_(TRUE);
             step_ = AuthStep::BLE;
+        send_auth_result_(true);
         }
         break;
     }
@@ -224,6 +225,7 @@ void Sequencer::tick() {
     }
      case AuthStep::BLE_Wait: {
         if (!ok) {
+<<<<<<< HEAD
             std::printf("[BLE] Fail\n");
             send_auth_state_(static_cast<uint8_t>(AuthStep::BLE), AuthStateFlag::FAIL);
             send_auth_result_(FALSE);
@@ -258,6 +260,24 @@ void Sequencer::tick() {
          reset_to_idle_();
          break;
      }
+=======
+        std::printf("[BLE] Fail\n");
+        send_auth_result_(false);
+        reset_to_idle_();
+        }
+    else{
+        std::printf("[BLE] End\n");
+        send_auth_result_(true);
+    }
+        break;
+    }
+    case AuthStep::CAMERA:{
+
+    }
+    case AuthStep::CAMERA_Wait:{
+
+    }
+>>>>>>> fix :  블루투스 수정 및 step 카메라 추가 [SCA-Core]
     case AuthStep::Idle:
     case AuthStep::Done:
     default:

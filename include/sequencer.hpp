@@ -14,11 +14,19 @@ enum class AuthStep : uint8_t {
     Idle       = 0,
     WaitingTCU = 1,
     NFC        = 2,
+<<<<<<< HEAD
     BLE        = 3,
     CAM     = 4,
     NFC_Wait   = 5,
     BLE_Wait   = 6,
     CAM_Wait= 7,
+=======
+    NFC_Wait   = 3,
+    BLE        = 4,
+    BLE_Wait   = 5,
+    CAMERA     = 6,
+    CAMERA_Wait= 7,
+>>>>>>> fix :  블루투스 수정 및 step 카메라 추가 [SCA-Core]
     Done       = 8
 };
 
