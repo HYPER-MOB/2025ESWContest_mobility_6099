@@ -58,11 +58,12 @@ extern "C" bool nfc_read_uid(uint8_t* out, int len, int timeout_s) {
     if (!res.ok || res.uid_hex.empty()) return false;
     
     int written=0;
-    
-    bytes_from_hex_relaxed((res.use_apdu? res.uid_hex : res.uid_hex+6), out, sizeof(out), written);
+    std::string str =res.uid_hex.substr(res.use_apdu?16:0,res.uid_hex.size());
+    bytes_from_hex_relaxed(str, out, sizeof(out), written);
+    std::printf("ADPU :");
     for (int i = 0; i < len; i++)
     {
-        std::printf("%02X ", out[i]);
+        std::printf("%02X", out[i]);
     }
     std::printf("\n");
     return (written > 0);
@@ -107,8 +108,7 @@ bool Sequencer::perform_nfc_() {
         return false;
     }
     bool match = (true);
-    int i =0;
-    while(read_uid[i]!=0)
+    for(int i=0;i<8;i++)
     {
         if(read_uid[i]!=expected_nfc_[i])
         {
