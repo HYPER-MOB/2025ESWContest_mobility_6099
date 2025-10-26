@@ -3,20 +3,18 @@
 #include <algorithm>
 #include <cstring>
 #include <iostream>
-#include "sca_ble_peripheral.hpp"  // nfc_poll_uid ����
-#include "nfc_reader.hpp"  // nfc_poll_uid ����
+#include "sca_ble_peripheral.hpp"
+#include "nfc_reader.hpp"
 #include <array>
 #include <cstdint>
-// �� BLE �������� ���� �ڵ忡�� ������ �Լ����� �״�� �����𡱸� ���ݴϴ�.
-//   (���� ����/��ũ�� sca_ble_peripheral.cpp�� ���)
 extern "C" bool sca_ble_advertise_and_wait(std::string uuid_last12,
     std::string local_name,
     int timeout_s) {
     sca::BleConfig cfg{};
-    cfg.hash12 = uuid_last12;       // 12-hex (�빮�� ����; ���ο��� �빮��ȭ)
+    cfg.hash12 = uuid_last12; 
     cfg.local_name = local_name[0]>0 ? local_name : "SCA-CAR";
     cfg.timeout_sec = timeout_s > 0 ? timeout_s : 20;
-    cfg.require_encrypt = false;             // ��å �ʿ�� true
+    cfg.require_encrypt = false;
 
     sca::BlePeripheral p;
     sca::BleResult     out{};
@@ -49,9 +47,6 @@ static bool bytes_from_hex_relaxed(const std::string& in, uint8_t* out, int max_
     return true;
 }
 
-// ==== C-ABI ����: ���� �ִ� �Լ� ���Ǹ� ������ ����ϴ�. ====
-// �ܺο��� ����ϴ� �ɺ��� 'nfc_read_uid(unsigned char*, int, int)' �̹Ƿ�
-// �ݵ�� extern "C" �� �����մϴ�.
 extern "C" bool nfc_read_uid(uint8_t* out, int len, int timeout_s) {
     if (!out || len <= 0) return false;
     std::memset(out, 0, (size_t)len);
@@ -67,8 +62,6 @@ extern "C" bool nfc_read_uid(uint8_t* out, int len, int timeout_s) {
     return (written > 0);
 }
 
-
-// ===== ���� =====
 std::string Sequencer::to_hex_(const uint8_t* d, size_t n) {
     static const char* k = "0123456789ABCDEF";
     std::string s;
@@ -80,13 +73,10 @@ std::string Sequencer::to_hex_(const uint8_t* d, size_t n) {
     std::reverse(s.begin(),s.end());
     return s;
 }
-
-// ===== CTOR =====
 Sequencer::Sequencer(const SequencerConfig& cfg): cfg_(cfg) {
     reset_to_idle_();
 }
 
-// ===== ���� ��ƿ =====
 void Sequencer::reset_to_idle_() {
     std::lock_guard<std::mutex> lk(m_);
     step_ = AuthStep::Idle;
@@ -94,85 +84,60 @@ void Sequencer::reset_to_idle_() {
     have_expected_nfc_ = false;
     have_ble_sess_ = have_ble_chal_ = false;
 }
-
-// ===== �ܰ� ���� =====
 void Sequencer::start_sequence_() {
     if (running_) return;
     running_ = true;
     step_ = AuthStep::WaitingTCU;
-    request_user_info_to_tcu_(); // TCU���� 0x102 ��û
+    request_user_info_to_tcu_();
     send_auth_state_(static_cast<uint8_t>(AuthStep::WaitingTCU), AuthStateFlag::OK);
 }
 
-// 0x102 SCA_TCU_USER_INFO_REQ �۽� (�÷��� 1)
-void Sequencer::request_user_info_to_tcu_() {
-    CanFrame f{}; f.id = BCAN_ID_SCA_TCU_USER_INFO_REQ; f.dlc = 1; f.data[0] = 1;
-    can_send(cfg_.can_channel.c_str(), f, 0);
-}
 
-// ===== NFC ���� =====
 bool Sequencer::perform_nfc_() {
-    // TCU ��� NFC�� ���� �;� ��
-    if (!have_expected_nfc_) {
-        return false;
-    }
     uint8_t* read_uid=new uint8_t[8];
     const bool ok = nfc_read_uid(read_uid,8,cfg_.nfc_timeout_s);
     if (!ok) {
         return false;
     }
-
     bool match = (true);
     int i =0;
     while(read_uid[i]!=0)
     {
-        std::printf("read:%02X, data:%02X\n",read_uid[i],expected_nfc_[i]);
         if(read_uid[i]!=expected_nfc_[i])
-            {
-                match =false;
-                break;
-            }
+        {
+            match =false;
+            break;
+        }
         i++;
     }
     return match;
 }
 
-// ===== BLE ���� =====
 bool Sequencer::perform_ble_() {
-    // ����/ç���� 4+4 ����Ʈ�� ���� �;� ��
-    if (!have_ble_sess_ ) {
-        return false;
-    }
-
-
-    // BLE ���� UUID ������ ���� 12�ڸ�: ���� 4����Ʈ(8 hex) + ç���� ���� 2����Ʈ(4 hex) ��
-    // ������Ʈ �Ծ࿡ �°� ��ġ�� ��. �ӽ÷� ����(4B)=8hex + chal(����2B)=4hex => �� 12hex
     const std::string last12 = to_hex_(ble_sess_.data(), 6);
-
     const bool matched = sca_ble_advertise_and_wait(
-        last12,                // 12-hex (UUID ������ ����)
-        cfg_.ble_local_name,   // ���� �̸�
-        cfg_.ble_timeout_s    // Ÿ�Ӿƿ�
+        last12,
+        cfg_.ble_local_name,
+        cfg_.ble_timeout_s
     );
 
     return matched;
 }
-
-// ===== CAN ���� ����ġ =====
+bool Sequencer::perform_cam_() {
+    return true;
+}
 void Sequencer::on_can_rx(const CanFrame& f) {
-    std::printf("[TEST] id: %d dlc:%d data:",f.id,f.dlc);
+    std::printf("[CAN] id: %d dlc:%d data:",f.id,f.dlc);
     for(int i=0;i<f.dlc;i++)
     {
         std::printf("%02X",f.data[i]);
     }
     std::printf("\n");
     switch (f.id) {
-    // DCU�� ���� ����
     case BCAN_ID_DCU_SCA_USER_FACE_REQ: {
         start_sequence_();
         break;
     }
-    // TCU �� NFC ��� UID (8����Ʈ)
     case BCAN_ID_TCU_SCA_USER_INFO_NFC: {
         if (f.dlc >= 4) {
             for(int i=0;i<f.dlc;i++)
@@ -186,7 +151,6 @@ void Sequencer::on_can_rx(const CanFrame& f) {
         }
         break;
     }
-    // TCU �� BLE ����(4B)
     case BCAN_ID_TCU_SCA_USER_INFO_BLE_SESS: {
         if (f.dlc >= 4) {
             std::memcpy(ble_sess_.data(), f.data+sizeof(uint8_t)*2, 6);
@@ -197,60 +161,96 @@ void Sequencer::on_can_rx(const CanFrame& f) {
         }
         break;
     }
+    case BCAN_ID_TCU_SCA_USER_INFO: {
+        // 카메라 데이터 처리
+        if(1)have_collected_cam_;
+        if (f.dlc >= 4) {
+            ack_user_info_(/*index=*/2, /*state=*/0);
+        }
+        else {
+            ack_user_info_(/*index=*/2, /*state=*/1);
+        }
+        break;
+    }
     default:
         break;
     }
 }
-
-// ===== tick: ���¸ӽ� �� ���� =====
 void Sequencer::tick() {
     AuthStep cur = step_.load();
     if (!running_) return;
     switch (cur) {
     case AuthStep::WaitingTCU: {
-        // ��� �����Ͱ� �� ���̸� NFC �ܰ��
-        if (have_expected_nfc_) {
-            step_ = AuthStep::NFC;
-        }
+        step_ = AuthStep::NFC;
         break;
     }
     case AuthStep::NFC: {
-        std::printf("[NFC START]\n");
-        ok = perform_nfc_();
-        std::printf("[NFC perform]\n");
+        if (have_expected_nfc_)
+        {
+            std::printf("[NFC START]\n");
+            ok = perform_nfc_();
             step_ = AuthStep::NFC_Wait;
-        
+        }
         break;
     }
     case AuthStep::NFC_Wait: {
         if (!ok) {
-        std::printf("[NFC] Fail\n");
-            send_auth_result_(false);
+            std::printf("[NFC] Fail\n");
+            send_auth_state_(static_cast<uint8_t>(AuthStep::NFC), AuthStateFlag::FAIL);
+            send_auth_result_(FALSE);
             reset_to_idle_();
         } else {
-        std::printf("[NFC] End\n");
+            std::printf("[NFC] End\n");
+            send_auth_state_(static_cast<uint8_t>(AuthStep::NFC), AuthStateFlag::OK);
+            send_auth_result_(TRUE);
             step_ = AuthStep::BLE;
         }
         break;
     }
     case AuthStep::BLE: {
-        std::printf("[BLE]\n");
-        bool ok = perform_ble_();
+        if (have_ble_sess_) {
+            std::printf("[BLE] START\n");
+            ok = perform_ble_();
             step_ = AuthStep::BLE_Wait;
+        }
         break;
     }
      case AuthStep::BLE_Wait: {
-         
         if (!ok) {
-        std::printf("[BLE] Fail\n");
-    }
-    else{
-        std::printf("[BLE] End\n");
-    }
-        send_auth_result_(ok);
-        reset_to_idle_();
+            std::printf("[BLE] Fail\n");
+            send_auth_state_(static_cast<uint8_t>(AuthStep::BLE), AuthStateFlag::FAIL);
+            send_auth_result_(FALSE);
+            reset_to_idle_();
+        }
+        else{
+            std::printf("[BLE] End\n");
+            send_auth_state_(static_cast<uint8_t>(AuthStep::BLE), AuthStateFlag::OK);
+            send_auth_result_(TRUE);
+            step_ = AuthStep::CAM_Wait;
+        }
         break;
     }
+     case AuthStep::CAM: {
+         if (have_collected_cam_) {
+             std::printf("[CAM] START\n");
+             ok = perform_cam_();
+             step_ = AuthStep::CAM_Wait;
+         }
+         break;
+     }
+     case AuthStep::CAM_Wait: {
+         if (!ok) {
+             std::printf("[CAM] Fail\n");
+             send_auth_state_(static_cast<uint8_t>(AuthStep::CAM), AuthStateFlag::FAIL);
+         }
+         else {
+             std::printf("[CAM] End\n");
+             send_auth_state_(static_cast<uint8_t>(AuthStep::CAM), AuthStateFlag::OK);
+         }
+         send_auth_result_(ok);
+         reset_to_idle_();
+         break;
+     }
     case AuthStep::Idle:
     case AuthStep::Done:
     default:
@@ -258,7 +258,6 @@ void Sequencer::tick() {
     }
 }
 
-// ===== ����/��� �۽� =====
 void Sequencer::send_auth_state_(uint8_t step, AuthStateFlag flg) {
     CanFrame f{}; f.id = BCAN_ID_SCA_DCU_AUTH_STATE; f.dlc = 2;
     f.data[0] = step;
@@ -267,7 +266,8 @@ void Sequencer::send_auth_state_(uint8_t step, AuthStateFlag flg) {
 }
 
 void Sequencer::send_auth_result_(bool ok) {
-    CanFrame f{}; f.id = BCAN_ID_SCA_DCU_AUTH_RESULT; f.dlc = 1;
+    CanFrame f{}; f.id = BCAN_ID_SCA_DCU_AUTH_RESULT; f.dlc = 8;
+    memset(f.data, 0, sizeof(f.data));
     f.data[0] = ok ? 0x00 : 0x01;
     can_send(cfg_.can_channel.c_str(), f, 0);
 }
@@ -277,6 +277,11 @@ void Sequencer::ack_user_info_(uint8_t index, uint8_t state) {
     std::printf("[ACK]\n");
     CanFrame f{}; f.id = BCAN_ID_SCA_TCU_USER_INFO_ACK; f.dlc = 2;
     f.data[0] = index; // 1:NFC, 2:BLE
-    f.data[1] = state; // 0 OK, 1 ����/����
+    f.data[1] = state; // 0 OK, 1 
+    can_send(cfg_.can_channel.c_str(), f, 0);
+}
+
+void Sequencer::request_user_info_to_tcu_() {
+    CanFrame f{}; f.id = BCAN_ID_SCA_TCU_USER_INFO_REQ; f.dlc = 1; f.data[0] = 1;
     can_send(cfg_.can_channel.c_str(), f, 0);
 }
