@@ -165,6 +165,7 @@ static const int PINS_N = sizeof(PINS)/sizeof(PINS[0]);
 
 static inline float ms_per_unit_for(const AxisRuntime& rt, AxisDir d){
     float span = (float)(rt.config.max_val - rt.config.min_val);
+    if (span <= 0.0f) return AXIS_MIN_SEG_MS; // 안전 가드
     float stroke = (d == AxisDir::ToMax) ? rt.config.stroke_toMax_ms
                                          : rt.config.stroke_toMin_ms;
     return stroke / span;
@@ -523,29 +524,92 @@ static void relay_button(AxisRuntime& rt, int btn) {
 // SENSOR Function =====================================================
 static void sensor_setup() {
     pinMode(PIN_SEAT, INPUT_PULLUP);
+    g_lastStableState = (digitalRead(PIN_SEAT) == LOW);
+    g_isSeat = g_lastStableState;
+    lastChangeMs = millis();
 }
 
 static void sensor_loop() {
     bool raw = (digitalRead(PIN_SEAT) == LOW);
 
-    if(raw != g_isSeat) {
-        if(millis() - lastChangeMs > debounceMs) {
-            g_isSeat = raw;
-            lastChangeMs = millis();
-        }
-    }
-    else {
+    if(raw != g_lastStableState) {
+        g_lastStableState = raw;
         lastChangeMs = millis();
     }
 
-    if(g_isSeat != g_lastStableState) {
-        g_lastStableState = g_isSeat;
-        // on -> off, off -> on이 필요할 수도...
+    if ((millis() - lastChangeMs) >= debounceMs && g_isSeat != g_lastStableState) {
+        g_isSeat = g_lastStableState;
+        // 필요하면 여기서 상태변화 이벤트 처리
+        // Serial.printf("[SEAT] isSeat=%d\n", g_isSeat?1:0);
     }
 }
 // SENSOR Function =====================================================
+// CMD Function ========================================================
+
+static void cmd_status() {
+    // FSM 상태 문자열 매핑
+    const char* stateStr = "";
+    switch (g_state) {
+        case State::NotReady: stateStr = "NotReady"; break;
+        case State::Ready:    stateStr = "Ready";    break;
+        case State::Busy:     stateStr = "Busy";     break;
+        default:              stateStr = "Unknown";  break;
+    }
+
+    // 기본 상태 출력
+    Serial.printf("[DEBUG] State=%s(%d), is_seated=%d\n", 
+                    stateStr, (int)g_state, g_isSeat ? 1 : 0);
+
+    // 각 축 출력
+    Serial.printf("  - POS:   cur=%d, active=%d\n", RT_SEAT_POS.current, RT_SEAT_POS.isActive ? 1 : 0);
+    Serial.printf("  - ANG:   cur=%d, active=%d\n", RT_SEAT_ANGLE.current, RT_SEAT_ANGLE.isActive ? 1 : 0);
+    Serial.printf("  - FRONT: cur=%d, active=%d\n", RT_SEAT_FRONT.current, RT_SEAT_FRONT.isActive ? 1 : 0);
+    Serial.printf("  - REAR:  cur=%d, active=%d\n", RT_SEAT_REAR.current, RT_SEAT_REAR.isActive ? 1 : 0);
+    Serial.printf("  - AX seq: idx=%d running=%d\n", g_ax_idx, g_ax_running?1:0);
+}
+
+static void cmd_reset_status() {
+    // 1) 동작 중이면 안전 중단 (하드웨어는 Hold 유지, 위치 명령 안보냄)
+    relay_abort(RT_SEAT_ANGLE);
+    relay_abort(RT_SEAT_POS);
+    relay_abort(RT_SEAT_FRONT);
+    relay_abort(RT_SEAT_REAR);
+
+    // 2) 소프트웨어상의 current만 0으로 보정 (하드웨어는 그대로)
+    RT_SEAT_ANGLE.current = 0;
+    RT_SEAT_POS.current = 0;
+    RT_SEAT_FRONT.current = 0;
+    RT_SEAT_REAR.current = 0;
+
+    // (선택) 원치 않는 후속 이동을 막고 싶다면 target도 0으로 맞추고 싶을 수 있음:
+    RT_SEAT_ANGLE.target = RT_SEAT_POS.target = RT_SEAT_FRONT.target = RT_SEAT_REAR.target = 0;
+
+    // 3) NVS에 즉시 반영
+    nv_save_currents_if_due(/*force=*/true);
+
+    Serial.println("[CMD] Reset Status: all currents set to 0 (software only).");
+}
+
+// CMD Function ========================================================
 
 // FSM Function ========================================================
+static void serial_poll_commands() {
+    // 줄 단위로 읽기(개행까지). 블로킹을 피하려면 available 체크 후 한 줄만 처리.
+    if (!Serial.available()) return;
+
+    String line = Serial.readStringUntil('\n');
+    line.trim();                        // 앞뒤 공백 제거
+    line.toLowerCase();                 // 대소문자 무시
+
+    if (line == "reset status") {
+        cmd_reset_status();
+    }
+    else if (line == "status") {
+        cmd_status();
+    }
+    // 추후 다른 명령도 여기에 추가 가능
+}
+
 void fsm_setup() {
     g_isReady = true;
     fsm_enterState(State::NotReady);
@@ -694,6 +758,8 @@ void fsm_stateReadyLoop() {
     (void)relay_update(RT_SEAT_ANGLE);
     (void)relay_update(RT_SEAT_FRONT);
     (void)relay_update(RT_SEAT_REAR);
+
+    serial_poll_commands();
 }
 
 void fsm_onEnterBusy() {
@@ -730,33 +796,6 @@ void loop() {
     fsm_loop();
     sensor_loop();
     nv_save_currents_if_due(/*force=*/false); // ★ 선택: 주기적 저장
-    // === 디버그 출력 (1초마다) ===
-    static uint32_t lastDebugMs = 0;
-    uint32_t now = millis();
-    if(now - lastDebugMs >= 1000) {
-        lastDebugMs = now;
-
-        // FSM 상태 문자열 매핑
-        const char* stateStr = "";
-        switch (g_state) {
-            case State::NotReady: stateStr = "NotReady"; break;
-            case State::Ready:    stateStr = "Ready";    break;
-            case State::Busy:     stateStr = "Busy";     break;
-            default:              stateStr = "Unknown";  break;
-        }
-
-        // 기본 상태 출력
-        Serial.printf("[DEBUG] State=%s(%d), is_seated=%d\n", 
-                       stateStr, (int)g_state, g_isSeat ? 1 : 0);
-
-        // 각 축 출력
-        Serial.printf("  - POS:   cur=%d, active=%d\n", RT_SEAT_POS.current, RT_SEAT_POS.isActive ? 1 : 0);
-        Serial.printf("  - ANG:   cur=%d, active=%d\n", RT_SEAT_ANGLE.current, RT_SEAT_ANGLE.isActive ? 1 : 0);
-        Serial.printf("  - FRONT: cur=%d, active=%d\n", RT_SEAT_FRONT.current, RT_SEAT_FRONT.isActive ? 1 : 0);
-        Serial.printf("  - REAR:  cur=%d, active=%d\n", RT_SEAT_REAR.current, RT_SEAT_REAR.isActive ? 1 : 0);
-    }
-    // ============================
-
 
     delay(1);
 }
