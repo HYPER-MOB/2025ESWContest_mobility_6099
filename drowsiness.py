@@ -86,6 +86,9 @@ def exp_smooth(prev, new, alpha=SMOOTHING):
 
 def main():
     cap = cv2.VideoCapture(0)
+    with open("drowsiness.txt", "w", encoding="utf-8") as f:
+        f.write("2\n")
+
     if not cap.isOpened():
         print("Cannot open camera.")
         return
@@ -170,7 +173,14 @@ def main():
                     debug_str += f" ROLL≈{smooth_roll:.1f}°"
                 if smooth_pitch is not None:
                     debug_str += f" PITCH≈{smooth_pitch:.1f}°"
-                if any(reasons):
+                is_drowsy = any(reasons)
+                try:
+                    with open("drowsiness.txt", "w", encoding="utf-8") as f:
+                        f.write("1\n" if is_drowsy else "0\n")
+                except Exception:
+                    pass
+
+                if is_drowsy:
                     print(f"[{time.strftime('%H:%M:%S')}] Status={level} / Reason={', '.join(reasons)} |{debug_str}")
                 else:
                     print(f"[{time.strftime('%H:%M:%S')}] Status={level} |{debug_str}")
