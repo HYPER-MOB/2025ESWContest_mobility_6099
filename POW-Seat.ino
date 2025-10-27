@@ -38,8 +38,6 @@ static const CanFilter f_any              = { CAN_FILTER_MASK, { .mask = { 0,   
 
 int subID_all = -1;
 int subID_rx  = -1;
-int subID_dcu_seat_order = -1;
-int subID_dcu_reset = -1;
 
 int jobID_pow_seat_state = -1;
 // CAN ========================================================
@@ -47,24 +45,14 @@ int jobID_pow_seat_state = -1;
 // FSM ========================================================
 enum class State : uint8_t { NotReady = 0, Ready, Busy };
 
-typedef struct {
-    int seat_position;
-    int seat_angle;
-    int seat_front_height;
-    int seat_rear_height;
-} ControlStatus;
-struct ControlContext {
-    ControlStatus target;
-    bool active = false;
-} g_control;
-
 bool g_isReady      = false;
 State g_state       = State::NotReady;
 State g_prevState   = State::NotReady;
 uint32_t g_stateEnterMs = 0;
 
-static volatile ControlStatus g_defaultStatus = {90, 90, 90, 90};
-static volatile ControlStatus g_currentStatus = {90, 90, 90, 90};
+int g_btn_angle = 0, g_btn_pos = 0, g_btn_front = 0, g_btn_rear = 0;
+static uint32_t g_btn_ts_angle = 0, g_btn_ts_pos = 0, g_btn_ts_front = 0, g_btn_ts_rear = 0;
+static const uint32_t BTN_TIMEOUT_MS = 100;
 
 void fsm_enterState(State s);
 
@@ -100,7 +88,8 @@ enum class AxisPhase : uint8_t { Idle, PreHold, Moving, FinalHold };
 static const uint8_t MAX_PINS_PER_PATTERN = 2;
 struct AxisConfig {
     int min_val, max_val, def_val;
-    float stroke_ms, ms_per_unit;
+    float stroke_toMax_ms;
+    float stroke_toMin_ms;
     PinState onMoveToMin[MAX_PINS_PER_PATTERN]; 
     PinState onMoveToMax[MAX_PINS_PER_PATTERN]; 
     PinState onHold[MAX_PINS_PER_PATTERN];
@@ -120,8 +109,8 @@ AxisConfig CFG_SEAT_POS = {
     .min_val        = 0,
     .max_val        = 100,
     .def_val        = 50,
-    .stroke_ms      = 12000.0f,
-    .ms_per_unit    = 12000.0f / 100,
+    .stroke_toMax_ms   = 12000.0f,
+    .stroke_toMin_ms   = 13200.0f, 
     .onMoveToMin    = { {PIN_SEAT_POS_A, false}, {PIN_SEAT_POS_B, true} },
     .onMoveToMax    = { {PIN_SEAT_POS_A, true}, {PIN_SEAT_POS_B, false} },
     .onHold         = { {PIN_SEAT_POS_A, false}, {PIN_SEAT_POS_B, false} }
@@ -130,8 +119,8 @@ AxisConfig CFG_SEAT_ANGLE = {
     .min_val        = 0,
     .max_val        = 180,
     .def_val        = 30,
-    .stroke_ms      = 25500.0f,
-    .ms_per_unit    = 25500.0f / 180,
+    .stroke_toMax_ms   = 25500.0f,  
+    .stroke_toMin_ms   = 25500.0f,  
     .onMoveToMin    = { {PIN_SEAT_ANGLE_A, false}, {PIN_SEAT_ANGLE_B, true} },
     .onMoveToMax    = { {PIN_SEAT_ANGLE_A, true}, {PIN_SEAT_ANGLE_B, false} },
     .onHold         = { {PIN_SEAT_ANGLE_A, false}, {PIN_SEAT_ANGLE_B, false} }
@@ -141,8 +130,8 @@ AxisConfig CFG_SEAT_FRONT = {
     .min_val        = 0,
     .max_val        = 100,
     .def_val        = 0,
-    .stroke_ms      = 3300.0f,
-    .ms_per_unit    = 3300.0f / 100,
+    .stroke_toMax_ms   = 3300.0f,
+    .stroke_toMin_ms   = 3300.0f, 
     .onMoveToMin    = { {PIN_SEAT_FRONT_A, false}, {PIN_SEAT_FRONT_B, true} },
     .onMoveToMax    = { {PIN_SEAT_FRONT_A, true}, {PIN_SEAT_FRONT_B, false} },
     .onHold         = { {PIN_SEAT_FRONT_A, false}, {PIN_SEAT_FRONT_B, false} }
@@ -151,8 +140,8 @@ AxisConfig CFG_SEAT_REAR = {
     .min_val        = 0,
     .max_val        = 100,
     .def_val        = 0,
-    .stroke_ms      = 7000.0f,
-    .ms_per_unit    = 7000.0f / 100,
+    .stroke_toMax_ms   = 7000.0f,
+    .stroke_toMin_ms   = 7000.0f, 
     .onMoveToMin    = { {PIN_SEAT_REAR_A, false}, {PIN_SEAT_REAR_B, true} },
     .onMoveToMax    = { {PIN_SEAT_REAR_A, true}, {PIN_SEAT_REAR_B, false} },
     .onHold         = { {PIN_SEAT_REAR_A, false}, {PIN_SEAT_REAR_B, false} }
@@ -174,6 +163,12 @@ static const uint32_t AX_GAP = 80;
 int PINS[] = {PIN_SEAT_POS_A, PIN_SEAT_POS_B, PIN_SEAT_ANGLE_A, PIN_SEAT_ANGLE_B, PIN_SEAT_FRONT_A, PIN_SEAT_FRONT_B, PIN_SEAT_REAR_A, PIN_SEAT_REAR_B};
 static const int PINS_N = sizeof(PINS)/sizeof(PINS[0]);
 
+static inline float ms_per_unit_for(const AxisRuntime& rt, AxisDir d){
+    float span = (float)(rt.config.max_val - rt.config.min_val);
+    float stroke = (d == AxisDir::ToMax) ? rt.config.stroke_toMax_ms
+                                         : rt.config.stroke_toMin_ms;
+    return stroke / span;
+}
 // RELAY ======================================================
 
 // SENSOR =====================================================
@@ -198,10 +193,10 @@ static void nv_begin(){
 }
 
 static void nv_load_currents(){
-    RT_SEAT_ANGLE.current    = prefs.getShort(KEY_ANGLE);
-    RT_SEAT_POS.current  = prefs.getShort(KEY_POS);
-    RT_SEAT_FRONT.current   = prefs.getShort(KEY_FRONT);
-    RT_SEAT_REAR.current = prefs.getShort(KEY_REAR);
+    RT_SEAT_ANGLE.current   = constrain((int)prefs.getShort(KEY_ANGLE), RT_SEAT_ANGLE.config.min_val, RT_SEAT_ANGLE.config.max_val);
+    RT_SEAT_POS.current     = constrain((int)prefs.getShort(KEY_POS),   RT_SEAT_POS.config.min_val,   RT_SEAT_POS.config.max_val);
+    RT_SEAT_FRONT.current   = constrain((int)prefs.getShort(KEY_FRONT), RT_SEAT_FRONT.config.min_val, RT_SEAT_FRONT.config.max_val);
+    RT_SEAT_REAR.current    = constrain((int)prefs.getShort(KEY_REAR),  RT_SEAT_REAR.config.min_val,  RT_SEAT_REAR.config.max_val);
     g_nvLastSaveMs = millis();
 }
 
@@ -326,7 +321,7 @@ static void relay_start(AxisRuntime& rt) {
 
     AxisDir newDir = (delta > 0) ? AxisDir::ToMax : AxisDir::ToMin;
 
-    float k = cfg.ms_per_unit;
+    float k = ms_per_unit_for(rt, newDir);
     uint32_t dur = (uint32_t)(fabsf((float)delta) * k);
     if(dur < AXIS_MIN_SEG_MS) dur = AXIS_MIN_SEG_MS;
     if(dur > AXIS_MAX_SEG_MS) dur = AXIS_MAX_SEG_MS;
@@ -435,9 +430,9 @@ static bool relay_seq_update() {
     return false; // 아직 진행 중
 }
 
-static inline int jog_step_for(const AxisRuntime& rt) {
+static inline int jog_step_for(const AxisRuntime& rt, AxisDir d) {
     // 세그먼트가 AXIS_MIN_SEG_MS 이상이 되도록 단위(step) 계산
-    float units = AXIS_MIN_SEG_MS / rt.config.ms_per_unit;
+    float units = AXIS_MIN_SEG_MS / ms_per_unit_for(rt, d);;
     if (units < 1.0f) units = 1.0f;
     int step = (int)ceilf(units);
     // 한 번에 전체 스트로크를 넘지 않도록 안전 제한
@@ -471,6 +466,10 @@ static inline void relay_abort(AxisRuntime& rt) {
     nv_save_currents_if_due(/*force=*/true); // 선택: 현재값 저장
 }
 
+static inline int relay_btn_with_timeout(int btn, uint32_t ts){
+  return (millis() - ts > BTN_TIMEOUT_MS) ? 0 : btn;
+}
+
 static void relay_button(AxisRuntime& rt, int btn) {
     int s = btn_sign(btn);                // 0, +1, -1
     if (s == 0) {
@@ -478,13 +477,15 @@ static void relay_button(AxisRuntime& rt, int btn) {
         return;
     }
 
+    AxisDir wantDir = (s > 0) ? AxisDir::ToMax : AxisDir::ToMin;
+
     // ===== 이동 중 "같은 방향"이면 타깃을 연장 (데드타임 스킵) =====
     if (rt.isActive && rt.phase == AxisPhase::Moving) {
-        AxisDir wantDir = (s > 0) ? AxisDir::ToMax : AxisDir::ToMin;
+        
         if (rt.lastApplied == wantDir) {
             uint32_t now = millis();
             int cur = axis_eval_now(rt, now);
-            int step = jog_step_for(rt);
+            int step = jog_step_for(rt, wantDir);
 
             int wantTarget = constrain(rt.target + s * step, rt.config.min_val, rt.config.max_val);
             if (wantTarget != rt.target) {
@@ -492,7 +493,8 @@ static void relay_button(AxisRuntime& rt, int btn) {
                 rt.start_val   = cur;
                 rt.target      = wantTarget;
                 rt.start_ms    = now;
-                uint32_t dur   = (uint32_t)lroundf(fabsf((float)(rt.target - cur)) * rt.config.ms_per_unit);
+                float k        = ms_per_unit_for(rt, wantDir);
+                uint32_t dur   = (uint32_t)lroundf(fabsf((float)(rt.target - cur)) * k);
                 if (dur < AXIS_MIN_SEG_MS) dur = AXIS_MIN_SEG_MS;
                 if (dur > AXIS_MAX_SEG_MS) dur = AXIS_MAX_SEG_MS;
                 rt.duration_ms = dur;
@@ -509,7 +511,7 @@ static void relay_button(AxisRuntime& rt, int btn) {
     }
 
     // ===== 여기서부터는 비활성(Idle/FinalHold 이후) 또는 갓 완료된 경우: 새 세그먼트 시작 =====
-    int step = jog_step_for(rt);
+    int step = jog_step_for(rt, wantDir);
     int nextTarget = constrain(rt.current + s * step, rt.config.min_val, rt.config.max_val);
     if (nextTarget == rt.current) return;   // 더 갈 데 없으면 무시
 
@@ -576,20 +578,17 @@ uint32_t fsm_stateElapsed() {
 
 void fsm_setTargetStatus(const CanMessage *message) {
     RT_SEAT_ANGLE.target    = constrain(message->dcu_seat_order.sig_seat_angle, RT_SEAT_ANGLE.config.min_val, RT_SEAT_ANGLE.config.max_val);
-    RT_SEAT_POS.target    = constrain(message->dcu_seat_order.sig_seat_position, RT_SEAT_POS.config.min_val, RT_SEAT_POS.config.max_val);
+    RT_SEAT_POS.target      = constrain(message->dcu_seat_order.sig_seat_position, RT_SEAT_POS.config.min_val, RT_SEAT_POS.config.max_val);
     RT_SEAT_FRONT.target    = constrain(message->dcu_seat_order.sig_seat_front_height, RT_SEAT_FRONT.config.min_val, RT_SEAT_FRONT.config.max_val);
-    RT_SEAT_REAR.target    = constrain(message->dcu_seat_order.sig_seat_rear_height, RT_SEAT_REAR.config.min_val, RT_SEAT_REAR.config.max_val);
+    RT_SEAT_REAR.target     = constrain(message->dcu_seat_order.sig_seat_rear_height, RT_SEAT_REAR.config.min_val, RT_SEAT_REAR.config.max_val);
 }
 // 0 = 중립, 1 = 플러스, 2 = 마이너스
-int g_btn_angle = 0;
-int g_btn_pos = 0;
-int g_btn_front = 0;
-int g_btn_rear = 0;
+
 void fsm_setButtonStatus(const CanMessage *message) {
-    g_btn_angle = constrain(message->dcu_seat_button.sig_seat_angle_button, 0, 2);
-    g_btn_pos = constrain(message->dcu_seat_button.sig_seat_position_button, 0, 2);
-    g_btn_front = constrain(message->dcu_seat_button.sig_seat_front_height_button, 0, 2);
-    g_btn_rear = constrain(message->dcu_seat_button.sig_seat_rear_height_button, 0, 2);
+    g_btn_angle = constrain(message->dcu_seat_button.sig_seat_angle_button, 0, 2);          g_btn_ts_angle = millis();
+    g_btn_pos   = constrain(message->dcu_seat_button.sig_seat_position_button, 0, 2);       g_btn_ts_pos   = millis();
+    g_btn_front = constrain(message->dcu_seat_button.sig_seat_front_height_button,0,2);     g_btn_ts_front = millis();
+    g_btn_rear  = constrain(message->dcu_seat_button.sig_seat_rear_height_button, 0, 2);    g_btn_ts_rear  = millis();
 }
 
 bool fsm_handleMessage() {
@@ -653,26 +652,25 @@ void fsm_stateNotReadyLoop() {
             if (g_ackLastTryMs == 0 || (now - g_ackLastTryMs) >= ACK_RETRY_MS) {
                 g_ackLastTryMs = now;
                 g_ackTries++;
-                fsm_enterState(State::Ready);
-                return;
-                // CanMessage msg = {0};
-                // msg.dcu_reset_ack.sig_index  = NODE_IDX;
-                // msg.dcu_reset_ack.sig_status = 1;
-                // CanFrame frame = can_encode_bcan(BCAN_ID_DCU_RESET_ACK, &msg, BCAN_DLC_DCU_RESET_ACK);
 
-                // if (can_send(CH, frame, 1000) == CAN_OK) {
-                //     Serial.printf("[POW-SEAT] homing done, reset ack OK\n");
-                //     fsm_enterState(State::Ready);
-                //     return;
-                // } else {
-                //     Serial.printf("[POW-SEAT] reset ack failed (try %u)\n", g_ackTries);
-                //     // (선택) 최대 횟수 초과 시 재초기화/알람 등
-                //     if (g_ackTries >= ACK_MAX_TRIES) {
-                //         // 예: CAN 재오픈 시도, 또는 잠시 대기 등
-                //         // can_open 재시도 로직을 넣을 수 있음
-                //         g_ackTries = 0; // 계속 시도할 거라면 카운터 리셋
-                //     }
-                // }
+                CanMessage msg = {0};
+                msg.dcu_reset_ack.sig_index  = NODE_IDX;
+                msg.dcu_reset_ack.sig_status = 1;
+                CanFrame frame = can_encode_bcan(BCAN_ID_DCU_RESET_ACK, &msg, BCAN_DLC_DCU_RESET_ACK);
+
+                if (can_send(CH, frame, 1000) == CAN_OK) {
+                    Serial.printf("[POW-SEAT] homing done, reset ack OK\n");
+                    fsm_enterState(State::Ready);
+                    return;
+                } else {
+                    Serial.printf("[POW-SEAT] reset ack failed (try %u)\n", g_ackTries);
+                    // (선택) 최대 횟수 초과 시 재초기화/알람 등
+                    if (g_ackTries >= ACK_MAX_TRIES) {
+                        // 예: CAN 재오픈 시도, 또는 잠시 대기 등
+                        // can_open 재시도 로직을 넣을 수 있음
+                        g_ackTries = 0; // 계속 시도할 거라면 카운터 리셋
+                    }
+                }
             }
             break;
         }
@@ -686,10 +684,10 @@ void fsm_onEnterReady() {
 void fsm_stateReadyLoop() {
     if (fsm_handleMessage()) return;
 
-    relay_button(RT_SEAT_POS, g_btn_pos);
-    relay_button(RT_SEAT_ANGLE, g_btn_angle);
-    relay_button(RT_SEAT_FRONT, g_btn_front);
-    relay_button(RT_SEAT_REAR, g_btn_rear);
+    relay_button(RT_SEAT_POS,   relay_btn_with_timeout(g_btn_pos,   g_btn_ts_pos));
+    relay_button(RT_SEAT_ANGLE, relay_btn_with_timeout(g_btn_angle, g_btn_ts_angle));
+    relay_button(RT_SEAT_FRONT, relay_btn_with_timeout(g_btn_front, g_btn_ts_front));
+    relay_button(RT_SEAT_REAR,  relay_btn_with_timeout(g_btn_rear,  g_btn_ts_rear));
 
     // 2) 항상 보간을 진행하여 current를 갱신
     (void)relay_update(RT_SEAT_POS);
