@@ -68,7 +68,7 @@ class CameraFaceMesh:
             raise RuntimeError("mediapipe not available. pip install mediapipe")
 
         cam_index = int(os.getenv("FACE_AUTH_CAM_INDEX", "0"))
-        self.cap = cv2.VideoCapture(cam_index, cv2.CAP_DSHOW)
+        self.cap = cv2.VideoCapture(cam_index)
 
         w = int(os.getenv("FACE_AUTH_CAM_WIDTH", "1280"))
         h = int(os.getenv("FACE_AUTH_CAM_HEIGHT", "720"))
@@ -173,40 +173,80 @@ def match_profile(camera: CameraFaceMesh, indices: List[Tuple[int, int]], stored
     return False
 
 def main():
+    in_path = os.getenv("FACE_AUTH_INPUT_FILE", "input.txt")
+    out_path = os.getenv("FACE_AUTH_OUTPUT_FILE", "output.txt")
+    profile_path = os.getenv("FACE_AUTH_PROFILE_PATH", "user1.txt").strip()
+    poll_s = float(os.getenv("FACE_AUTH_POLL_SEC", "0.1"))
+    max_attempts = int(os.getenv("FACE_AUTH_MAX_ATTEMPTS", "60"))
+
     try:
         camera = CameraFaceMesh()
     except Exception as e:
         log(f"Camera/MediaPipe init error: {e}")
         camera = None
 
-    sys.stdout.write("initialized\n")
-    sys.stdout.flush()
+    def read_int(path: str):
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                txt = f.read().strip()
+            if not txt:
+                return None
+            m = re.search(r"-?\d+", txt)
+            return int(m.group(0)) if m else None
+        except Exception:
+            return None
+
+    def write_int(path: str, val: int):
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(str(val))
+        except Exception as e:
+            log(f"Write error for {path}: {e}")
+
+    write_int(out_path, 1)
+    print("Initialized")
+    last_in = read_int(in_path)
+    if last_in is None:
+        last_in = 1
 
     try:
-        path = "./user1.txt"
-        indices, stored_vec = parse_profile(path)
+        while True:
+            time.sleep(poll_s)
+            cur = read_int(in_path)
+            if cur is None or cur == last_in:
+                continue
 
-        if camera is None:
-            sys.stdout.write("false\n")
-            sys.stdout.flush()
+            if last_in != 2 and cur == 2:
+                write_int(out_path, 2)
+                print("Starting face authentication...")
+                ok = False
+                if not profile_path:
+                    log("FACE_AUTH_PROFILE_PATH is not set")
+                else:
+                    try:
+                        indices, stored_vec = parse_profile(profile_path)
+                        if camera is not None:
+                            ok = match_profile(camera, indices, stored_vec, max_attempts)
+                    except Exception as e:
+                        log(f"Face recognition error: {e}")
+                        ok = False
+                write_int(out_path, 3 if ok else 4)
+                print("Face authentication completed:", "Success" if ok else "Failure")
 
-        max_attempts = int(os.getenv("FACE_AUTH_MAX_ATTEMPTS", "60"))
-        try:
-            ok = match_profile(camera, indices, stored_vec, max_attempts)
-        except Exception as e:
-            log(f"Match error: {e}")
-            ok = False
-        sys.stdout.write(("true" if ok else "false") + "\n")
-        sys.stdout.flush()
+            elif last_in != 1 and cur == 1:
+                write_int(out_path, 1)
+                print("Switching to standby mode")
 
-        sys.stdout.write("terminated\n")
-        sys.stdout.flush()
-    finally:
-        try:
-            if camera:
-                camera.close()
-        except Exception:
-            pass
+            elif last_in != 0 and cur == 0:
+                write_int(out_path, 0)
+                if camera:
+                    camera.close()
+                print("Program terminated")
+                break
+
+            last_in = cur
+    except Exception:
+        pass
 
 if __name__ == "__main__":
     main()
