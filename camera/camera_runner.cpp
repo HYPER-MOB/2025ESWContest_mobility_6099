@@ -86,19 +86,14 @@ namespace sca {
         std::ifstream ifs(path);
         if (!ifs) return -1;
 
-        // 공백 제거 후 한 문자만
         ifs >> std::ws;
         int ch = ifs.get();
         if (ch == EOF) return -1;
 
-        // unsigned char 로 정규화한 값을 int로
         unsigned char uc = static_cast<unsigned char>(ch);
         return static_cast<int>(uc);
     }
 
-    // ----- Python process -----
-
-    // argv 벡터를 posix_spawnp에 맞게 변환
     static std::vector<char*> make_argv(const std::string& prog,
         const std::vector<std::string>& args)
     {
@@ -114,12 +109,13 @@ namespace sca {
         const std::vector<std::string>& args,
         const std::optional<std::string>& working_dir)
     {
+        
         const std::string python = "python3";
-
-        // 절대/상대 경로 모두 허용. chdir 하지 않고 그대로 실행.
         std::vector<std::string> all_args;
-        all_args.reserve(1 + args.size());
-        all_args.emplace_back(script_filename);
+        std::filesystem::path script = working_dir
+        ? (std::filesystem::path(*working_dir) / script_filename)
+        : std::filesystem::path(script_filename);
+        all_args.emplace_back(script.string());
         all_args.insert(all_args.end(), args.begin(), args.end());
 
         pid_t pid = -1;
@@ -130,12 +126,8 @@ namespace sca {
 
         posix_spawn_file_actions_init(&fa);
         if (working_dir.has_value()) {
-            // working_dir이 있으면 chdir을 파일액션으로 적용 (프로세스 전역 chdir 회피)
-            // posix_spawn에는 직접 chdir 액션이 없어 파이썬 쪽에서 처리하거나
-            // script_filename을 working_dir/script로 구성하는 것이 일반적.
-            // 여기서는 간단히 절대경로 생성으로 대체 권장 → working_dir는 무시
+
         }
-        // pfa = &fa; // (위 주석처럼 절대경로 사용 권장이라 실제 적용은 생략)
 
         int rc = posix_spawnp(&pid, python.c_str(), pfa,
             /*attrp*/nullptr, argv.data(), environ);
@@ -154,7 +146,6 @@ namespace sca {
         int status = 0;
         pid_t r = waitpid(h.pid, &status, WNOHANG);
         if (r == 0) {
-            // 아직 실행 중
             return false;
         }
         if (r == h.pid) {
@@ -162,15 +153,13 @@ namespace sca {
                 exit_code = WEXITSTATUS(status);
             }
             else if (WIFSIGNALED(status)) {
-                // 시그널로 종료된 경우 음수로 표기
                 exit_code = -WTERMSIG(status);
             }
             else {
-                exit_code = -999; // 기타
+                exit_code = -999;
             }
             return true;
         }
-        // waitpid 에러
         return false;
     }
 
@@ -179,7 +168,7 @@ namespace sca {
         if (!h.valid()) return false;
         int status = 0;
         pid_t r = waitpid(h.pid, &status, WNOHANG);
-        return (r == 0); // 0이면 아직 실행 중
+        return (r == 0); 
     }
 
     bool terminate(const ProcessHandle& h, int sig)

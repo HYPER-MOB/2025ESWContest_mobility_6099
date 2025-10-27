@@ -7,10 +7,6 @@
 
 namespace sca {
     enum class WriteMode { Append, Truncate };
-    struct CamConfig {
-        std::pair<uint32_t,float> *data;
-        int data_cnt;
-    };
     std::filesystem::path get_ai_path();
     bool write_text(const std::string& path,
         const std::string& data,

@@ -5,6 +5,7 @@
 #include <iostream>
 #include "sca_ble_peripheral.hpp"
 #include "nfc_reader.hpp"
+#include "camera_adapter.hpp"
 #include <array>
 #include <cstdint>
 uint32_t bswap32(uint32_t v) {
@@ -17,7 +18,6 @@ static bool bytes_from_hex_relaxed(const std::string& in, uint8_t* out, int max_
     written = 0;
     if (!out || max_len <= 0) return false;
 
-    // 정규화: 공백/하이픈/콜론 제거 + 0x prefix 제거 + 대문자화
     size_t i = 0;
 
     const int need = (int)(in.size() / 2);
@@ -107,22 +107,13 @@ void Sequencer::start_sequence_() {
 
 
 bool Sequencer::perform_nfc_() {
-    uint8_t* read_uid=new uint8_t[8];
-    const bool ok = nfc_read_uid(read_uid,8,cfg_.nfc_timeout_s);
-    if (!ok) {
-        return false;
+    uint8_t buf[8] = {0};
+    if (!nfc_read_uid(buf, 8, cfg_.nfc_timeout_s)) return false;
+
+    for (int i = 0; i < 8; ++i) {
+        if (buf[i] != expected_nfc_[i]) return false;
     }
-    bool match = (true);
-    for(int i=0;i<8;i++)
-    {
-        if(read_uid[i]!=expected_nfc_[i])
-        {
-            match =false;
-            break;
-        }
-        i++;
-    }
-    return match;
+    return true;
 }
 
 bool Sequencer::perform_ble_() {
@@ -135,9 +126,17 @@ bool Sequencer::perform_ble_() {
 
     return matched;
 }
-bool Sequencer::perform_cam_() {
-    cam_data_setting(&cam_data_);
+bool Sequencer::setting_cam_() {
+    bool ok = cam_initial_();
+    if (!ok) return false;
+    cam_data_setting_(cam_data_.data(), cam_data_cnt);
     return true;
+}
+
+bool Sequencer::perform_cam_(uint8_t* result) {
+    bool ok_flag = false;
+    result  = cam_authenticating_(&ok_flag);
+    return ok_flag;
 }
 void Sequencer::on_can_rx(const CanFrame& f) {
     std::printf("[CAN] id: %d dlc:%d data:",f.id,f.dlc);
@@ -175,13 +174,13 @@ void Sequencer::on_can_rx(const CanFrame& f) {
         break;
     }
     case BCAN_ID_TCU_SCA_USER_INFO: {
+        if (f.dlc == 8) {
         uint32_t v;
         std::memcpy(&v, f.data, 4);
 
-        if (f.dlc == 8) {
             if (v & 0x0000FFFF == 0x0000FFFF) {
                 have_collected_cam_ = true;
-                ack_user_info_(/*index=*/2, /*state=*/0);
+            ack_user_info_(/*index=*/3, /*state=*/0);
                 break;
             }
             else
@@ -231,9 +230,8 @@ void Sequencer::tick() {
         } else {
             std::printf("[NFC] End\n");
             send_auth_state_(static_cast<uint8_t>(AuthStep::NFC), AuthStateFlag::OK);
-            send_auth_result_(TRUE);
+            send_auth_result_(true);
             step_ = AuthStep::BLE;
-        send_auth_result_(true);
         }
         break;
     }
@@ -256,20 +254,63 @@ void Sequencer::tick() {
             std::printf("[BLE] End\n");
             send_auth_state_(static_cast<uint8_t>(AuthStep::BLE), AuthStateFlag::OK);
             send_auth_result_(TRUE);
-            step_ = AuthStep::CAM_Wait;
+            retry_step = 0;
+            step_ = AuthStep::CAM_Setting;
         }
         break;
     }
-     case AuthStep::CAM: {
+     case AuthStep::CAM_Setting: {
          if (have_collected_cam_) {
-             std::printf("[CAM] START\n");
-             ok = perform_cam_();
-             step_ = AuthStep::CAM_Wait;
+             std::printf("[CAM] Setting\n");
+             ok = setting_cam_();
+             if(ok)
+                step_ = AuthStep::CAM;
+            else if(retry_step<3)
+                retry_step++;
+            else{
+                std::printf("[CAM] Program Issue\n");
+                send_auth_state_(static_cast<uint8_t>(AuthStep::CAM), AuthStateFlag::FAIL);
+                send_auth_result_(FALSE);
+                reset_to_idle_();
+            }
+
+         }
+         break;
+     }
+     case AuthStep::CAM: {
+            uint8_t result;
+            ok = perform_cam_(&result);
+            
+            switch (result)
+            {
+            case eCamStatus::Ready:
+                cam_start_();
+                break;
+            case eCamStatus::Terminate:
+                step_ = AuthStep::CAM_Wait;
+                break;
+            case eCamStatus::Result:
+                cam_Terminate_();
+                break;
+            case eCamStatus::Error:
+                cam_Terminate_();
+                std::printf("[CAM] Fail\n");
+                send_auth_state_(static_cast<uint8_t>(AuthStep::CAM), AuthStateFlag::FAIL);
+                send_auth_result_(false);
+                reset_to_idle_();
+                break;
+            
+            default:
+                break;
+            }
+
          }
          break;
      }
      case AuthStep::CAM_Wait: {
-         if (!ok) {
+        if(0)
+        {
+        if (!ok) {
              std::printf("[CAM] Fail\n");
              send_auth_state_(static_cast<uint8_t>(AuthStep::CAM), AuthStateFlag::FAIL);
          }
@@ -279,8 +320,14 @@ void Sequencer::tick() {
          }
          send_auth_result_(ok);
          reset_to_idle_();
+        }
+         
          break;
      }
+     case AuthStep::Riding:
+     {
+            //riding seq
+     }break;
     case AuthStep::Idle:
     case AuthStep::Done:
     default:

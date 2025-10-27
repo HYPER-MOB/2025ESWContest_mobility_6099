@@ -1,13 +1,14 @@
 #include "camera_runner.hpp"
 #include <vector>
 #include <string>
+#include <filesystem>
 
 
-#defien CAM_AUTH ""
+#define CAM_AUTH ""
 #define CAM_RIDE ""
-#define CAM_DATA ""
-#define CAM_INPUT ""
-#define CAM_OUTPUT ""
+#define CAM_DATA "user1.txt"
+#define CAM_INPUT "input.txt"
+#define CAM_OUTPUT "output.txt"
 
 
 namespace sca {
@@ -25,6 +26,7 @@ namespace sca {
 	}
 	enum eInput
 	{
+		Default = -1,
 		Terminate = 0,
 		Wait = 1,
 		Action = 2
@@ -35,19 +37,33 @@ namespace sca {
 		Wait = 1,
 		Action =2,
 		True = 3,
-		FALSE =4
+		False =4
+	};
+	enum eStatus
+	{
+		Wait =0,
+		Action = 1,
+		Ready = 2,
+		Terminate =3,
+		Result = 4,
+		Error = 5
 	};
 	bool cam_initial_();
+	bool cam_Terminate_();
 
 	bool cam_data_setting_(std::pair<uint32_t,float>* data, int len);
 
-	bool cam_authenticating_();
+	uint8_t cam_authenticating_(bool ok);
 
 	bool cam_clean_();
 
 	bool cam_start_();
-
-	std::filesystem PATH_AI;
-	ProcessHandle python_Handle;
+	std::filesystem::path PATH_AI;
+    struct CamConfig {
+		eInput inputStep;
+		eInput curStep;
+		bool result;
+		ProcessHandle python_Handle;
+    };
 
 }

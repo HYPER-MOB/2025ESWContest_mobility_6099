@@ -4,18 +4,30 @@
 #include <utility> 
 #include <cstdint>
 
+
 namespace sca {
 
+	CamConfig cfg;
 	bool cam_initial_(eFile type)
 	{
+		cfg.curStep=eInput::Default;
+		cfg.inputStep=eInput::Default;
+		cfg.result = false;
+
 		PATH_AI = get_ai_path();
-		fs::path script = PATH_AI / ai_filename(type);
-		python_Handle = run_python(script.string());
-		return python_Handle.valid();
+		std::filesystem::path script = PATH_AI / ai_filename(type);
+		std::filesystem::path in = PATH_AI / ai_filename(eFile::Input);
+		bool ok = write_text(in.string(), "1", WriteMode::Truncate);
+		if(ok)
+		{	
+			cfg.python_Handle = run_python(script.string());
+			return cfg.python_Handle.valid();
+		}
+		return false;// not write input txt
 	}
 	bool cam_data_setting_(std::pair<uint32_t, float>* data, int len)
 	{
-
+		std::filesystem::path dst= PATH_AI / ai_filename(eFile::Data);
 
 		if (len > 0) {
 			if (!write_pair_line(dst.string(), data[0].first, data[0].second,
@@ -30,39 +42,97 @@ namespace sca {
 	}
 	bool cam_start_()
 	{
-		fs::path in = PATH_AI / ai_filename(eFile::Input);
-		return write_text(in.string(), "1", WriteMode::Truncate);
+		if(cfg.curStep!=eInput::Wait)return false;
+		std::filesystem::path in = PATH_AI / ai_filename(eFile::Input);
+		bool ok = write_text(in.string(), "2", WriteMode::Truncate);
+		if(ok)cfg.inputStep = eInput::Action;
+		return ok;
 	}
 
-	bool cam_authenticating_() {
-		int ec;
-		if (try_get_exit(python_Handle, ec)) {
-			//ÀÇµµÀÎÁö ÆÄÀÏÀĞ¾î¼­ È®ÀÎÇÒ ¿¹Á¤.
-			// ÀÇµµÄ¡ ¾Ê´Â Á¾·á
-			cam_clean_();
-			return false;
-			// Á¾·áµÊ. ec=0 Á¤»ó
-		}
-		else {
-			// ¾ÆÁ÷ ½ÇÇà Áß
-			return true;
-		}
+	bool cam_Terminate_()
+	{
+		std::filesystem::path in = PATH_AI / ai_filename(eFile::Input);
+		bool ok = write_text(in.string(), "0", WriteMode::Truncate);
+		cfg.inputStep = eInput::Terminate;
+		return ok;
 	}
+	uint8_t cam_authenticating_(bool* ok) {
+    // ê¸°ë³¸ê°’
+    if (ok) *ok = false;
+
+    // ì•„ì§ ì¢…ë£Œ ì•ˆ ë¨ â†’ ëŸ¬ë„ˆê°€ ì‹¤í–‰ ì¤‘ì´ë¯€ë¡œ 'ëŒ€ê¸°' ìƒíƒœë¥¼ ëŒë ¤ì¤€ë‹¤.
+    int ec = 0;
+    if (!try_get_exit(cfg.python_Handle, ec)) {
+        return eStatus::Wait; // â˜… ê¸°ì¡´ Error â†’ Wait ë¡œ êµì •
+    }
+
+    // ì¢…ë£Œë¨ â†’ íŒŒì¼ì—ì„œ ìƒíƒœì½”ë“œ ì½ê¸°
+    const std::filesystem::path out = PATH_AI / ai_filename(eFile::Output);
+    const int val = read_single_char_code(out.string());
+    if (val < 0) {
+        return eStatus::Error;
+    }
+
+    switch ((val - '0')) {
+    case eOutput::Terminate:
+        if (cfg.inputStep == eInput::Terminate) {
+            cam_clean_();
+            cfg.curStep = eInput::Terminate;
+            if (ok) *ok = cfg.result;
+            return eStatus::Terminate;
+        }
+        break;
+
+    case eOutput::Wait:
+        if (cfg.inputStep == eInput::Wait) {
+            cfg.curStep = eInput::Wait;
+            return eStatus::Ready;
+        }
+        break;
+
+    case eOutput::Action:
+        if (cfg.inputStep == eInput::Action) {
+            cfg.curStep = eInput::Action;
+            return eStatus::Action;
+        }
+        break;
+
+    case eOutput::True:
+        if (cfg.curStep == eInput::Action) {
+            cfg.result = true;
+            if (ok) *ok = true;
+            return eStatus::Result;
+        }
+        break;
+
+    case eOutput::False: // â˜… enum ì´ë¦„ í†µì¼(ëŒ€ì†Œë¬¸ì)
+        if (cfg.curStep == eInput::Action) {
+            cfg.result = false;
+            if (ok) *ok = false;
+            return eStatus::Result;
+        }
+        break;
+
+    default:
+        break;
+    }
+    return eStatus::Wait;
+}
 
 	bool cam_clean_() {
-		if (python_Handle.valid()) {
-			terminate(python_Handle, 15);
+		if (cfg.python_Handle.valid()) {
+			terminate(cfg.python_Handle, 15);
 			for (int i = 0; i < 20; ++i) {
 				int ec = 0;
-				if (try_get_exit(python_Handle, ec)) {
-					python_Handle = ProcessHandle{}; 
+				if (try_get_exit(cfg.python_Handle, ec)) {
+					cfg.python_Handle = ProcessHandle{}; 
 					return true;
 				}
 				usleep(100000); // 100ms
 			}
-			terminate(python_Handle, 9);
-			int ec = 0; try_get_exit(python_Handle, ec);
-			python_Handle = ProcessHandle{};
+			terminate(cfg.python_Handle, 9);
+			int ec = 0; try_get_exit(cfg.python_Handle, ec);
+			cfg.python_Handle = ProcessHandle{};
 		}
 
 		return true;

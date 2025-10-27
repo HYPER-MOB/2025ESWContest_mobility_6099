@@ -19,15 +19,25 @@ enum class AuthStep : uint8_t {
     CAM        = 4,
     NFC_Wait   = 5,
     BLE_Wait   = 6,
-    CAM_Wait   = 7,
-    Done       = 8
+    CAM_Setting= 7,
+    CAM_Wait   = 8,
+    Riding     = 9,
+    Done       = 10
 };
 
 enum class AuthStateFlag : uint8_t {
     OK    = 0,
     FAIL  = 1
 };
-
+enum class eCamStatus
+	{
+		Wait =0,
+		Action = 1,
+		Ready = 2,
+		Terminate =3,
+		Result = 4,
+		Error = 5
+	};
 struct SequencerConfig {
     std::string can_channel = "can0";
     uint32_t    can_bitrate = 500000;
@@ -55,6 +65,7 @@ public:
 
 private:
     bool ok;
+    int retry_step;
     int cam_data_cnt;
     SequencerConfig cfg_;
     std::atomic<AuthStep> step_{AuthStep::Idle};
@@ -70,7 +81,8 @@ private:
     void request_user_info_to_tcu_();   
     bool perform_nfc_();  
     bool perform_ble_();
-    bool perform_cam_();
+    bool setting_cam_();
+    bool perform_cam_(uint8_t* result);
 
     void send_auth_state_(uint8_t step, AuthStateFlag flg);  // 0x103
     void send_auth_result_(bool ok);                         // 0x112
