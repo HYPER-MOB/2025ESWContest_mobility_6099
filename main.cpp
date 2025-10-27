@@ -53,7 +53,7 @@ static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_MIRROR_UPDATE = 0x207; // DLC6
 static constexpr uint32_t ID_DCU_TCU_USER_PROFILE_WHEEL_UPDATE  = 0x208; // DLC2
 static constexpr uint32_t ID_TCU_DCU_USER_PROFILE_UPDATE_ACK    = 0x209; // DLC2
 
-static constexpr uint32_t ID_CAN_SYSTEM_WARNING = 0x500;
+static constexpr uint32_t ID_CAN_SYSTEM_WARNING = 0x003;
 static constexpr uint32_t ID_CAN_SYSTEM_START   = 0x600;
 
 // ── 버튼 메시지 상수 (주기 송신) ─────────────────────────────────────────────
@@ -414,18 +414,39 @@ static void onCanRx(const CanFrame* fr, void* user) {
     }
 
     // 인증 단계 상태 (can0)
-    if (fr->id == ID_SCA_DCU_AUTH_STATE && fr->dlc >= 2) {
-        qInfo() << "[CAN0 RX] AUTH_STATE  id=0x" << QString::number(fr->id,16).toUpper()
-                << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
-        const uint8_t step  = fr->data[0];
-        const uint8_t state = fr->data[1];
-        if (hasClients()) {
-            const QString msg = QString("Auth step=%1 state=%2").arg(step).arg(state);
-            sendToAll([msg](IpcConnection* c){ sendAuthProcess(c, msg); });
+if (fr->id == ID_SCA_DCU_AUTH_STATE && fr->dlc >= 2) {
+    qInfo() << "[CAN0 RX] AUTH_STATE  id=0x" << QString::number(fr->id,16).toUpper()
+            << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
+
+    const uint8_t step  = fr->data[0];
+    const uint8_t state = fr->data[1];
+
+    if (hasClients()) {
+        QString msg;
+
+        // step 값에 따라 메시지 분기
+        switch (step) {
+        case 1:
+            msg = "얼굴 인증중입니다..";
+            break;
+        case 2:
+            msg = "Bluetooth 인증중입니다..";
+            break;
+        case 3:
+            msg = "NFC인증 중입니다..";
+            break;
+        default:
+            msg = QString("Auth step=%1 state=%2").arg(step).arg(state);
+            break;
         }
-        return;
+
+        sendToAll([msg](IpcConnection* c){
+            sendAuthProcess(c, msg);
+        });
     }
 
+    return;
+}
     // 인증 결과 (can0)
     if (fr->id == ID_SCA_DCU_AUTH_RESULT && fr->dlc >= 1) {
         qInfo() << "[CAN0 RX] AUTH_RESULT id=0x" << QString::number(fr->id,16).toUpper()
@@ -532,7 +553,7 @@ static void onCanRx(const CanFrame* fr, void* user) {
     if (fr->id == ID_CAN_SYSTEM_WARNING && fr->dlc >= 1) {
         if (hasClients()) {
             const QString code = QStringLiteral("CAN_WARN_0x500");
-            const QString msg  = QStringLiteral("External warning trigger received on %1 (id=0x500).")
+            const QString msg  = QStringLiteral("졸음 운전 감지!!")
                                     .arg(bus ? bus : "?");
             sendToAll([code, msg](IpcConnection* c){ sendSystemWarning(c, code, msg); });
         }
@@ -605,10 +626,6 @@ int main(int argc, char** argv) {
         qCritical() << "[can]" << canErr;
         return 1;
     }
-
-    QTimer::singleShot(100, []{
-        CAN_Tx_RESET_on("can1");
-    });
 
     // 버튼 주기 송신 타이머 시작 (항상 현재 상태 전송; 누르지 않으면 0 유지)
     g_btnTxTimer = new QTimer(&app);
