@@ -137,6 +137,7 @@ static const int PINS_N = sizeof(PINS)/sizeof(PINS[0]);
 
 static inline float ms_per_unit_for(const AxisRuntime& rt, AxisDir d){
     float span = float(rt.config.max_val - rt.config.min_val);
+    if (span <= 0.0f) return AXIS_MIN_SEG_MS;  // 안전 가드
     float stroke = (d == AxisDir::ToMax) ? rt.config.stroke_toMax_ms
                                          : rt.config.stroke_toMin_ms;
     return stroke / span;
@@ -194,8 +195,8 @@ static void can_on_rx(const CanFrame* f, void* user) {
 static void can_build_pow_wheel_state(CanFrame *frame, void* user) {
     (void)user;
     CanMessage msg = {0};
-    msg.pow_wheel_state.sig_wheel_angle         = RT_ANGLE.current;
-    msg.pow_wheel_state.sig_wheel_position      = RT_POSITION.current;
+    msg.pow_wheel_state.sig_wheel_angle         = (uint8_t)constrain(RT_ANGLE.current,    RT_ANGLE.config.min_val,    RT_ANGLE.config.max_val);
+    msg.pow_wheel_state.sig_wheel_position      = (uint8_t)constrain(RT_POSITION.current, RT_POSITION.config.min_val, RT_POSITION.config.max_val);
     msg.pow_wheel_state.sig_wheel_status        = (uint8_t)g_state;
     *frame = can_encode_bcan(BCAN_ID_POW_WHEEL_STATE, &msg, BCAN_DLC_POW_WHEEL_STATE);
 }
@@ -224,10 +225,10 @@ static void can_setup(void){
     Serial.printf("can_open OK (NORMAL)\n");
 
     // 모든 프레임 구독
-    if (can_subscribe(CH, &subID_all, f_any, can_on_rx_all, NULL) != CAN_OK) 
-        Serial.printf("rx all subscribe failed\n");
-    else 
-        Serial.printf("rx all subscribe completed\n");
+    // if (can_subscribe(CH, &subID_all, f_any, can_on_rx_all, NULL) != CAN_OK) 
+    //     Serial.printf("rx all subscribe failed\n");
+    // else 
+    //     Serial.printf("rx all subscribe completed\n");
 
     if (can_subscribe(CH, &subID_rx, f_list, can_on_rx, NULL) != CAN_OK) 
         Serial.printf("subscribe failed\n");
@@ -476,8 +477,60 @@ static void relay_button(AxisRuntime& rt, int btn) {
 }
 
 // REALY Function ======================================================
+// CMD Function ========================================================
+
+static void cmd_status() {
+    const char* stateStr = "";
+    switch (g_state) {
+        case State::NotReady: stateStr = "NotReady"; break;
+        case State::Ready:    stateStr = "Ready";    break;
+        case State::Busy:     stateStr = "Busy";     break;
+        default:              stateStr = "Unknown";  break;
+    }
+
+    Serial.printf("[CMD] State=%s(%d)\n", stateStr, (int)g_state);
+    Serial.printf("  - ANGLE:   cur=%d, active=%d\n", RT_ANGLE.current, RT_ANGLE.isActive ? 1 : 0);
+    Serial.printf("  - POS: cur=%d, active=%d\n", RT_POSITION.current, RT_POSITION.isActive ? 1 : 0);
+    Serial.printf("  - AX seq: idx=%d running=%d\n", g_ax_idx, g_ax_running?1:0);
+}
+
+static void cmd_reset_status() {
+    // 1) 동작 중이면 안전 중단 (하드웨어는 Hold 유지, 위치 명령 안보냄)
+    relay_abort(RT_ANGLE);
+    relay_abort(RT_POSITION);
+    // 2) 소프트웨어상의 current만 0으로 보정 (하드웨어는 그대로)
+    RT_ANGLE.current   = 0;
+    RT_POSITION.current = 0;
+
+    // (선택) 원치 않는 후속 이동을 막고 싶다면 target도 0으로 맞추고 싶을 수 있음:
+    RT_ANGLE.target = RT_POSITION.target = 0;
+
+    // 3) NVS에 즉시 반영
+    nv_save_currents_if_due(/*force=*/true);
+
+    Serial.println("[CMD] Reset Status: all currents set to 0 (software only).");
+}
+
+// CMD Function ========================================================
 
 // FSM Function ========================================================
+static void serial_poll_commands() {
+    // 줄 단위로 읽기(개행까지). 블로킹을 피하려면 available 체크 후 한 줄만 처리.
+    if (!Serial.available()) return;
+
+    String line = Serial.readStringUntil('\n');
+    line.trim();                        // 앞뒤 공백 제거
+    line.toLowerCase();                 // 대소문자 무시
+
+    if (line == "reset status") {
+        cmd_reset_status();
+    }
+    else if (line == "status") {
+        cmd_status();
+    }
+    // 추후 다른 명령도 여기에 추가 가능
+}
+
 void fsm_setup() {
     g_isReady = true;
     fsm_enterState(State::NotReady);
@@ -618,6 +671,8 @@ void fsm_stateReadyLoop() {
 
     (void)relay_update(RT_POSITION);
     (void)relay_update(RT_ANGLE);
+
+    serial_poll_commands();
 }
 
 void fsm_onEnterBusy() {
