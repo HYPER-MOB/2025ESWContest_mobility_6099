@@ -60,7 +60,7 @@ static float g_pwm_freq_hz    = 50.0f;
 static float g_pwm_period_us  = 1000000.0f / 50.0f;
 
 struct ServoRt {
-    uint8_t  ch;              // PCA9685 채널 (0=room_yaw, 1=room_pitch 가정)
+    uint8_t  ch;              // PCA9685 채널
     int      current = 90;    // 현재 각도(추적 값)
     int      target  = 90;    // 목표 각도
     int      start_val = 90;  // 이동 시작 시점 각도(보간 기준)
@@ -72,8 +72,16 @@ struct ServoRt {
     uint16_t max_us = 2500;
     int _last_set_deg = -1;
 };
-static ServoRt SRV_YAW   { .ch = 0, .min_us = 2000, .max_us = 2500 };
-static ServoRt SRV_PITCH { .ch = 1, .min_us = 2000, .max_us = 2500 };
+static ServoRt SRV_PITCH    { .ch = 0, .ms_per_deg = 2000.0f / 180.0f, .min_us = 1900, .max_us = 2300 };
+static ServoRt SRV_YAW      { .ch = 1, .ms_per_deg = 3000.0f / 180.0f, .min_us = 1000, .max_us = 2700 };
+
+static ServoRt* SRVS[] = { &SRV_PITCH, &SRV_YAW };
+static const int SRVS_N = sizeof(SRVS)/sizeof(SRVS[0]);
+
+static int      g_srv_idx      = 0;
+static bool     g_srv_running  = false;
+static uint32_t g_srv_gap_ms   = 0;
+static const uint32_t SRV_GAP  = 40;   // 서보 사이 간격 (ms), 필요시 튜닝
 
 static inline uint16_t pwm_us_to_counts(float us) {
   if (us < 0) us = 0;
@@ -82,6 +90,7 @@ static inline uint16_t pwm_us_to_counts(float us) {
   if (cnt > 4095) cnt = 4095;
   return (uint16_t)lroundf(cnt);
 }
+
 // PWM ========================================================
 
 // FSM ========================================================
@@ -174,20 +183,20 @@ AxisConfig CFG_LEFT_YAW = {
     .min_val        = 0,
     .max_val        = 180,
     .def_val        = 90,
-    .stroke_toMax_ms   = 6500.0f,
-    .stroke_toMin_ms   = 6500.0f, 
-    .onMoveToMin    = { {PIN_LEFT_PIN_6, false}, {PIN_LEFT_PIN_7, true}, {PIN_LEFT_PIN_8, false} },
-    .onMoveToMax    = { {PIN_LEFT_PIN_6, true}, {PIN_LEFT_PIN_7, false}, {PIN_LEFT_PIN_8, true} },
+    .stroke_toMax_ms   = 6250.0f,
+    .stroke_toMin_ms   = 6250.0f, 
+    .onMoveToMin    = { {PIN_LEFT_PIN_6, true}, {PIN_LEFT_PIN_7, false}, {PIN_LEFT_PIN_8, true} },
+    .onMoveToMax    = { {PIN_LEFT_PIN_6, false}, {PIN_LEFT_PIN_7, true}, {PIN_LEFT_PIN_8, false} },
     .onHold         = { {PIN_LEFT_PIN_6, false}, {PIN_LEFT_PIN_7, false}, {PIN_LEFT_PIN_8, false} }
 };
 AxisConfig CFG_LEFT_PITCH = {
     .min_val        = 0,
     .max_val        = 180,
     .def_val        = 90,
-    .stroke_toMax_ms   = 6500.0f,
-    .stroke_toMin_ms   = 6500.0f, 
-    .onMoveToMin    = { {PIN_LEFT_PIN_6, true}, {PIN_LEFT_PIN_7, false}, {PIN_LEFT_PIN_8, false} },
-    .onMoveToMax    = { {PIN_LEFT_PIN_6, false}, {PIN_LEFT_PIN_7, true}, {PIN_LEFT_PIN_8, true} },
+    .stroke_toMax_ms   = 6250.0f,
+    .stroke_toMin_ms   = 6250.0f, 
+    .onMoveToMin    = { {PIN_LEFT_PIN_6, false}, {PIN_LEFT_PIN_7, true}, {PIN_LEFT_PIN_8, true} },
+    .onMoveToMax    = { {PIN_LEFT_PIN_6, true}, {PIN_LEFT_PIN_7, false}, {PIN_LEFT_PIN_8, false} },
     .onHold         = { {PIN_LEFT_PIN_6, false}, {PIN_LEFT_PIN_7, false}, {PIN_LEFT_PIN_8, false} }
 };
 
@@ -195,20 +204,20 @@ AxisConfig CFG_RIGHT_YAW = {
     .min_val        = 0,
     .max_val        = 180,
     .def_val        = 90,
-    .stroke_toMax_ms   = 6500.0f,
-    .stroke_toMin_ms   = 6500.0f, 
-    .onMoveToMin    = { {PIN_RIGHT_PIN_6, false}, {PIN_RIGHT_PIN_7, true}, {PIN_RIGHT_PIN_8, false} },
-    .onMoveToMax    = { {PIN_RIGHT_PIN_6, true}, {PIN_RIGHT_PIN_7, false}, {PIN_RIGHT_PIN_8, true} },
+    .stroke_toMax_ms   = 6250.0f,
+    .stroke_toMin_ms   = 6250.0f, 
+    .onMoveToMin    = { {PIN_RIGHT_PIN_6, true}, {PIN_RIGHT_PIN_7, false}, {PIN_RIGHT_PIN_8, true} },
+    .onMoveToMax    = { {PIN_RIGHT_PIN_6, false}, {PIN_RIGHT_PIN_7, true}, {PIN_RIGHT_PIN_8, false} },
     .onHold         = { {PIN_RIGHT_PIN_6, false}, {PIN_RIGHT_PIN_7, false}, {PIN_RIGHT_PIN_8, false} }
 };
 AxisConfig CFG_RIGHT_PITCH = {
     .min_val        = 0,
     .max_val        = 180,
     .def_val        = 90,
-    .stroke_toMax_ms   = 6500.0f,
-    .stroke_toMin_ms   = 6500.0f, 
-    .onMoveToMin    = { {PIN_RIGHT_PIN_6, true}, {PIN_RIGHT_PIN_7, false}, {PIN_RIGHT_PIN_8, false} },
-    .onMoveToMax    = { {PIN_RIGHT_PIN_6, false}, {PIN_RIGHT_PIN_7, true}, {PIN_RIGHT_PIN_8, true} },
+    .stroke_toMax_ms   = 6250.0f,
+    .stroke_toMin_ms   = 6250.0f, 
+    .onMoveToMin    = { {PIN_RIGHT_PIN_6, false}, {PIN_RIGHT_PIN_7, true}, {PIN_RIGHT_PIN_8, true} },
+    .onMoveToMax    = { {PIN_RIGHT_PIN_6, true}, {PIN_RIGHT_PIN_7, false}, {PIN_RIGHT_PIN_8, false} },
     .onHold         = { {PIN_RIGHT_PIN_6, false}, {PIN_RIGHT_PIN_7, false}, {PIN_RIGHT_PIN_8, false} }
 };
 
@@ -249,12 +258,12 @@ static void nv_begin(){
 }
 
 static void nv_load_currents(){
-    RT_LEFT_YAW.current    = constrain((int)prefs.getShort(KEY_LY), RT_LEFT_YAW.config.min_val, RT_LEFT_YAW.config.max_val);
-    RT_LEFT_PITCH.current  = constrain((int)prefs.getShort(KEY_LP), RT_LEFT_PITCH.config.min_val, RT_LEFT_PITCH.config.max_val);
-    RT_RIGHT_YAW.current   = constrain((int)prefs.getShort(KEY_RY), RT_RIGHT_YAW.config.min_val, RT_RIGHT_YAW.config.max_val);
-    RT_RIGHT_PITCH.current = constrain((int)prefs.getShort(KEY_RP), RT_RIGHT_PITCH.config.min_val, RT_RIGHT_PITCH.config.max_val);
-    SRV_YAW.current         = prefs.getShort(KEY_RMY);
-    SRV_PITCH.current       = prefs.getShort(KEY_RMP);
+    RT_LEFT_YAW.current     = constrain((int)prefs.getShort(KEY_LY), RT_LEFT_YAW.config.min_val, RT_LEFT_YAW.config.max_val);
+    RT_LEFT_PITCH.current   = constrain((int)prefs.getShort(KEY_LP), RT_LEFT_PITCH.config.min_val, RT_LEFT_PITCH.config.max_val);
+    RT_RIGHT_YAW.current    = constrain((int)prefs.getShort(KEY_RY), RT_RIGHT_YAW.config.min_val, RT_RIGHT_YAW.config.max_val);
+    RT_RIGHT_PITCH.current  = constrain((int)prefs.getShort(KEY_RP), RT_RIGHT_PITCH.config.min_val, RT_RIGHT_PITCH.config.max_val);
+    SRV_YAW.current         = constrain((int)prefs.getShort(KEY_RMY), 0, 180);
+    SRV_PITCH.current       = constrain((int)prefs.getShort(KEY_RMP), 0, 180);
     g_nvLastSaveMs = millis();
 }
 
@@ -331,10 +340,10 @@ static void can_setup(void){
     Serial.printf("can_open OK (NORMAL)\n");
 
     // 모든 프레임 구독
-    if (can_subscribe(CH, &subID_all, f_any, can_on_rx_all, NULL) != CAN_OK) 
-        Serial.printf("rx all subscribe failed\n");
-    else 
-        Serial.printf("rx all subscribe completed\n");
+    // if (can_subscribe(CH, &subID_all, f_any, can_on_rx_all, NULL) != CAN_OK) 
+    //     Serial.printf("rx all subscribe failed\n");
+    // else 
+    //     Serial.printf("rx all subscribe completed\n");
 
     if (can_subscribe(CH, &subID_rx, f_list, can_on_rx, NULL) != CAN_OK) 
         Serial.printf("subscribe failed\n");
@@ -351,6 +360,9 @@ static void can_setup(void){
 // CAN Function ========================================================
 
 // PWM Function ========================================================
+static inline int  pwm_eval_now(const ServoRt& s, uint32_t now);
+static inline int  pwm_jog_step_for(const ServoRt& s);
+
 static inline uint16_t pwm_us_from_angle(const ServoRt& s, int deg) {
     deg = constrain(deg, 0, 180);
     uint16_t us_min = s.min_us;
@@ -363,6 +375,7 @@ static inline uint16_t pwm_us_from_angle(const ServoRt& s, int deg) {
     float us = us_min + ((us_max - us_min) * (deg / 180.0f));
     return (uint16_t)lroundf(us);
 }
+
 static void pwm_setAngle(ServoRt& s, int deg) {
     deg = constrain(deg, 0, 180);
     if(deg == s._last_set_deg) return;
@@ -372,6 +385,7 @@ static void pwm_setAngle(ServoRt& s, int deg) {
     pwm.setPWM(s.ch, 0, counts);
     s._last_set_deg = deg;
 }
+
 static inline uint32_t pwm_duration_for(int from_deg, int to_deg, float ms_per_deg){
     int d = abs(to_deg - from_deg);
     uint32_t dur = (uint32_t)lroundf(d * ms_per_deg);
@@ -379,42 +393,17 @@ static inline uint32_t pwm_duration_for(int from_deg, int to_deg, float ms_per_d
     if (dur > 8000) dur = 8000;     // 안전 상한(선택)
     return dur;
 }
-static inline int pwm_eval_now(const ServoRt& s, uint32_t now){
-    if (!s.active || s.duration_ms == 0) return s.current;
-    float t = (float)(now - s.start_ms) / (float)s.duration_ms;
-    if (t < 0) t = 0; if (t > 1) t = 1;
-    return (int)lroundf((1.0f - t) * s.start_val + t * (float)s.target);
-}
-static inline int pwm_jog_step_for(const ServoRt& s){
-    float units = AXIS_MIN_SEG_MS / s.ms_per_deg;   // Seat/Wheel과 동일한 감각
-    if (units < 1.0f) units = 1.0f;
-    return (int)ceilf(units);
-}
-static void pwm_abort(ServoRt& s){
-    if (!s.active) return;
-    uint32_t now = millis();
-    s.current = pwm_eval_now(s, now);
-    s.active = false;
-    pwm_setAngle(s, s.current);
-}
-static void pwm_setup(void) {
-    Wire.begin(PIN_PWM_SDA, PIN_PWM_SCL);
-    pwm.begin();
-    g_pwm_freq_hz   = 50.0f;                 // 필요시 사용자 지정
-    g_pwm_period_us = 1000000.0f / g_pwm_freq_hz;
-    pwm.setPWMFreq(g_pwm_freq_hz);
-}
-static void pwm_start(ServoRt& s, int newTarget){
-    newTarget = constrain(newTarget, 0, 180);
-    uint32_t now = millis();
 
-    // 진행 중이면 현재 진행 위치를 기준으로 리타겟
+static void pwm_start(ServoRt& s){
+    int newTarget = constrain(s.target, 0, 180);
+
+    uint32_t now = millis();
     int from = s.active ? pwm_eval_now(s, now) : s.current;
 
     if (from == newTarget){
         s.current = s.target = newTarget;
         s.active = false;
-        pwm_setAngle(s, newTarget);   // 스냅
+        pwm_setAngle(s, newTarget);
         return;
     }
 
@@ -424,9 +413,9 @@ static void pwm_start(ServoRt& s, int newTarget){
     s.duration_ms = pwm_duration_for(from, newTarget, s.ms_per_deg);
     s.active      = true;
 
-    // 바로 1틱 적용해도 됨(선택)
     pwm_setAngle(s, from);
 }
+
 static bool pwm_update(ServoRt& s){
     if (!s.active) return true;
     uint32_t now = millis();
@@ -449,9 +438,72 @@ static bool pwm_update(ServoRt& s){
     }
     return false;
 }
-static inline bool pwm_all_done() {
-    return !SRV_YAW.active && !SRV_PITCH.active;
+
+static void pwm_setup(void) {
+    Wire.begin(PIN_PWM_SDA, PIN_PWM_SCL);
+    pwm.begin();
+    g_pwm_freq_hz   = 50.0f;                 // 필요시 사용자 지정
+    g_pwm_period_us = 1000000.0f / g_pwm_freq_hz;
+    pwm.setPWMFreq(g_pwm_freq_hz);
 }
+
+static void pwm_seq_start() {
+    for (int i = 0; i < SRVS_N; ++i) SRVS[i]->target = 90;
+    g_srv_idx = 0; g_srv_running = true; g_srv_gap_ms = 0;
+    pwm_start(*SRVS[g_srv_idx]);    // ← 릴레이의 relay_start와 대칭
+}
+
+static bool pwm_seq_update() {
+    // true 반환 = 서보 시퀀스 전체 완료
+    if (!g_srv_running) {
+        // 간격 기다리는 중 → 다음 축 시작
+        if (g_srv_idx >= SRVS_N) return true;
+
+        if (millis() - g_srv_gap_ms >= SRV_GAP) {
+            g_srv_running = true;
+            pwm_start(*SRVS[g_srv_idx]);
+        }
+        return false;
+    }
+
+    // 러닝 상태: 현재 축을 진행 (릴레이와 동일하게 업데이트를 여기서 호출)
+    if (pwm_update(*SRVS[g_srv_idx])) {
+        // 현재 축 완료
+        g_srv_idx++;
+        if (g_srv_idx >= SRVS_N) {
+            g_srv_running = false;
+            return true; // 전체 완료
+        }
+        // 다음 축 시작 전 갭으로 전환
+        g_srv_running = false;
+        g_srv_gap_ms = millis();
+        return false;
+    }
+
+    return false; // 아직 진행 중
+}
+
+static inline int pwm_jog_step_for(const ServoRt& s){
+    float units = AXIS_MIN_SEG_MS / s.ms_per_deg;   // Seat/Wheel과 동일한 감각
+    if (units < 1.0f) units = 1.0f;
+    return (int)ceilf(units);
+}
+
+static inline int pwm_eval_now(const ServoRt& s, uint32_t now){
+    if (!s.active || s.duration_ms == 0) return s.current;
+    float t = (float)(now - s.start_ms) / (float)s.duration_ms;
+    if (t < 0) t = 0; if (t > 1) t = 1;
+    return (int)lroundf((1.0f - t) * s.start_val + t * (float)s.target);
+}
+
+static void pwm_abort(ServoRt& s){
+    if (!s.active) return;
+    uint32_t now = millis();
+    s.current = pwm_eval_now(s, now);
+    s.active = false;
+    pwm_setAngle(s, s.current);
+}
+
 static void pwm_button(ServoRt& s, int btn){
     int sign = btn_sign(btn); // 0, +1, -1
     if (sign == 0){
@@ -461,8 +513,8 @@ static void pwm_button(ServoRt& s, int btn){
     uint32_t now = millis();
     int from = s.active ? pwm_eval_now(s, now) : s.current;
     int step = pwm_jog_step_for(s);
-    int newTarget = constrain(from + sign * step, 0, 180);
-    pwm_start(s, newTarget);
+    s.target = constrain(from + sign * step, 0, 180);
+    pwm_start(s);
 }
 // PWM Function ========================================================
 
@@ -609,7 +661,7 @@ static bool relay_seq_update() {
     return false; // 아직 진행 중
 }
 
-static inline int jog_step_for(const AxisRuntime& rt, AxisDir d) {
+static inline int relay_jog_step_for(const AxisRuntime& rt, AxisDir d) {
     // 세그먼트가 AXIS_MIN_SEG_MS 이상이 되도록 단위(step) 계산
     float units = AXIS_MIN_SEG_MS / ms_per_unit_for(rt, d);;
     if (units < 1.0f) units = 1.0f;
@@ -620,7 +672,7 @@ static inline int jog_step_for(const AxisRuntime& rt, AxisDir d) {
     return step;
 }
 
-static inline int axis_eval_now(const AxisRuntime& rt, uint32_t now) {
+static inline int relay_axis_eval_now(const AxisRuntime& rt, uint32_t now) {
     if (!rt.isActive || rt.phase != AxisPhase::Moving || rt.duration_ms == 0) return rt.current;
     float t = (float)(now - rt.start_ms) / (float)rt.duration_ms;
     if (t < 0) t = 0; if (t > 1) t = 1;
@@ -630,7 +682,7 @@ static inline int axis_eval_now(const AxisRuntime& rt, uint32_t now) {
 static inline void relay_abort(AxisRuntime& rt) {
     if (!rt.isActive) return;
     uint32_t now = millis();
-    int cur = axis_eval_now(rt, now); // 진행 중이면 현재 위치 보간
+    int cur = relay_axis_eval_now(rt, now); // 진행 중이면 현재 위치 보간
     rt.current = cur;
     relay_apply_hold(rt.config);      // 핀 즉시 Hold로
     rt.isActive   = false;
@@ -654,8 +706,8 @@ static void relay_button(AxisRuntime& rt, int btn) {
         
         if (rt.lastApplied == wantDir) {
             uint32_t now = millis();
-            int cur = axis_eval_now(rt, now);
-            int step = jog_step_for(rt, wantDir);
+            int cur = relay_axis_eval_now(rt, now);
+            int step = relay_jog_step_for(rt, wantDir);
 
             int wantTarget = constrain(rt.target + s * step, rt.config.min_val, rt.config.max_val);
             if (wantTarget != rt.target) {
@@ -681,7 +733,7 @@ static void relay_button(AxisRuntime& rt, int btn) {
     }
 
     // ===== 여기서부터는 비활성(Idle/FinalHold 이후) 또는 갓 완료된 경우: 새 세그먼트 시작 =====
-    int step = jog_step_for(rt, wantDir);
+    int step = relay_jog_step_for(rt, wantDir);
     int nextTarget = constrain(rt.current + s * step, rt.config.min_val, rt.config.max_val);
     if (nextTarget == rt.current) return;   // 더 갈 데 없으면 무시
 
@@ -691,7 +743,77 @@ static void relay_button(AxisRuntime& rt, int btn) {
 
 // REALY Function ======================================================
 
+// CMD Function ========================================================
+
+static void cmd_status() {
+    const char* stateStr = "";
+    switch (g_state) {
+        case State::NotReady: stateStr = "NotReady"; break;
+        case State::Ready:    stateStr = "Ready";    break;
+        case State::Busy:     stateStr = "Busy";     break;
+        default:              stateStr = "Unknown";  break;
+    }
+
+    Serial.printf("[CMD] State=%s(%d)\n", stateStr, (int)g_state);
+    Serial.printf("  - L_YAW:   cur=%d, active=%d\n", RT_LEFT_YAW.current, RT_LEFT_YAW.isActive ? 1 : 0);
+    Serial.printf("  - L_PITCH: cur=%d, active=%d\n", RT_LEFT_PITCH.current, RT_LEFT_PITCH.isActive ? 1 : 0);
+    Serial.printf("  - R_YAW:   cur=%d, active=%d\n", RT_RIGHT_YAW.current, RT_RIGHT_YAW.isActive ? 1 : 0);
+    Serial.printf("  - R_PITCH: cur=%d, active=%d\n", RT_RIGHT_PITCH.current, RT_RIGHT_PITCH.isActive ? 1 : 0);
+    Serial.printf("  - ROOM:    yaw=%d(%d) pitch=%d(%d) active=%d\n",
+                    SRV_YAW.current, SRV_YAW.target, SRV_PITCH.current, SRV_PITCH.target,
+                    (SRV_YAW.active || SRV_PITCH.active) ? 1 : 0);
+    Serial.printf("  - AX seq: idx=%d running=%d\n", g_ax_idx, g_ax_running?1:0);
+    Serial.printf("  - SRV seq: idx=%d running=%d\n", g_srv_idx, g_srv_running?1:0);
+}
+
+static void cmd_reset_status() {
+    // 1) 동작 중이면 안전 중단 (하드웨어는 Hold 유지, 위치 명령 안보냄)
+    relay_abort(RT_LEFT_YAW);
+    relay_abort(RT_LEFT_PITCH);
+    relay_abort(RT_RIGHT_YAW);
+    relay_abort(RT_RIGHT_PITCH);
+
+    pwm_abort(SRV_YAW);
+    pwm_abort(SRV_PITCH);
+
+    // 2) 소프트웨어상의 current만 0으로 보정 (하드웨어는 그대로)
+    RT_LEFT_YAW.current   = 0;
+    RT_LEFT_PITCH.current = 0;
+    RT_RIGHT_YAW.current  = 0;
+    RT_RIGHT_PITCH.current= 0;
+    SRV_YAW.current       = 0;
+    SRV_PITCH.current     = 0;
+
+    // (선택) 원치 않는 후속 이동을 막고 싶다면 target도 0으로 맞추고 싶을 수 있음:
+    RT_LEFT_YAW.target = RT_LEFT_PITCH.target = RT_RIGHT_YAW.target = RT_RIGHT_PITCH.target = 0;
+    SRV_YAW.target = SRV_PITCH.target = 0;
+
+    // 3) NVS에 즉시 반영
+    nv_save_currents_if_due(/*force=*/true);
+
+    Serial.println("[CMD] Reset Status: all currents set to 0 (software only).");
+}
+
+// CMD Function ========================================================
+
 // FSM Function ========================================================
+static void serial_poll_commands() {
+    // 줄 단위로 읽기(개행까지). 블로킹을 피하려면 available 체크 후 한 줄만 처리.
+    if (!Serial.available()) return;
+
+    String line = Serial.readStringUntil('\n');
+    line.trim();                        // 앞뒤 공백 제거
+    line.toLowerCase();                 // 대소문자 무시
+
+    if (line == "reset status") {
+        cmd_reset_status();
+    }
+    else if (line == "status") {
+        cmd_status();
+    }
+    // 추후 다른 명령도 여기에 추가 가능
+}
+
 void fsm_setup() {
     g_isReady = true;
     fsm_enterState(State::NotReady);
@@ -777,9 +899,7 @@ void fsm_onEnterNotReady() {
         AXES[i]->phase = AxisPhase::Idle;
     }
 
-    pwm_start(SRV_YAW,   90);
-    pwm_start(SRV_PITCH, 90);
-
+    pwm_seq_start();
     relay_seq_start();
 
     // 시퀀스 초기화: Position부터
@@ -794,7 +914,7 @@ void fsm_stateNotReadyLoop() {
     switch (g_nrPhase) {
         case NRPhase::Homing: {
             bool relay_done = relay_seq_update();
-            bool pwm_done   = pwm_all_done();
+            bool pwm_done   = pwm_seq_update();
             if(relay_done && pwm_done) {
                 g_nrPhase = NRPhase::AckPending;
                 g_ackLastTryMs = 0;     g_ackTries = 0;
@@ -851,19 +971,30 @@ void fsm_stateReadyLoop() {
     relay_button(RT_RIGHT_PITCH, btn_rp);
     relay_button(RT_RIGHT_YAW,   btn_ry);
 
-    pwm_button(SRV_YAW,   btn_with_timeout(g_btn_room_yaw,   g_btn_ts_room_yaw));
-    pwm_button(SRV_PITCH, btn_with_timeout(g_btn_room_pitch, g_btn_ts_room_pitch));
+    int btn_sp = btn_with_timeout(g_btn_room_pitch, g_btn_ts_room_pitch);
+    int btn_sy = btn_with_timeout(g_btn_room_yaw,   g_btn_ts_room_yaw);
+    btn_resolve_mutex_pair(btn_sp, g_btn_ts_room_pitch, btn_sy, g_btn_ts_room_yaw);
+
+    pwm_button(SRV_YAW,   btn_sy);
+    pwm_button(SRV_PITCH, btn_sp);
 
     // 2) 항상 보간을 진행하여 current를 갱신
     (void)relay_update(RT_LEFT_PITCH);
     (void)relay_update(RT_LEFT_YAW);
     (void)relay_update(RT_RIGHT_PITCH);
     (void)relay_update(RT_RIGHT_YAW);
+
+    // 서보 틱 (Ready에서는 버튼으로 direct move하므로 여기서 업데이트)
+    (void)pwm_update(SRV_PITCH);
+    (void)pwm_update(SRV_YAW);
+
+    serial_poll_commands();
 }
 
 void fsm_onEnterBusy() {
-    pwm_start(SRV_YAW,      SRV_YAW.target);
-    pwm_start(SRV_PITCH,    SRV_PITCH.target);
+    g_srv_idx = 0; g_srv_running = true; g_srv_gap_ms = 0;
+    pwm_start(*SRVS[g_srv_idx]);
+
     g_ax_idx = 0; g_ax_running = true; g_ax_gap_ms = 0;
     relay_start(*AXES[g_ax_idx]); 
 }
@@ -871,7 +1002,7 @@ void fsm_onEnterBusy() {
 void fsm_stateBusyLoop() {
     if (fsm_handleMessage()) return;
     bool relay_done = relay_seq_update();
-    bool pwm_done   = pwm_all_done();
+    bool pwm_done   = pwm_seq_update();
     if(relay_done && pwm_done) {
         fsm_enterState(State::Ready);
     }
@@ -894,37 +1025,7 @@ void setup() {
 }
 
 void loop() {
-    pwm_update(SRV_YAW);
-    pwm_update(SRV_PITCH);
     fsm_loop();
     nv_save_currents_if_due(/*force=*/false); // ★ 선택: 주기적 저장
-
-    // === 디버그 출력 (1초마다) ===
-    static uint32_t lastDebugMs = 0;
-    uint32_t now = millis();
-    if(now - lastDebugMs >= 1000) {
-        lastDebugMs = now;
-
-        const char* stateStr = "";
-        switch (g_state) {
-            case State::NotReady: stateStr = "NotReady"; break;
-            case State::Ready:    stateStr = "Ready";    break;
-            case State::Busy:     stateStr = "Busy";     break;
-            default:              stateStr = "Unknown";  break;
-        }
-
-        Serial.printf("[DEBUG] State=%s(%d)\n", stateStr, (int)g_state);
-        Serial.printf("  - L_YAW:   cur=%d, active=%d\n", RT_LEFT_YAW.current, RT_LEFT_YAW.isActive ? 1 : 0);
-        Serial.printf("  - L_PITCH: cur=%d, active=%d\n", RT_LEFT_PITCH.current, RT_LEFT_PITCH.isActive ? 1 : 0);
-        Serial.printf("  - R_YAW:   cur=%d, active=%d\n", RT_RIGHT_YAW.current, RT_RIGHT_YAW.isActive ? 1 : 0);
-        Serial.printf("  - R_PITCH: cur=%d, active=%d\n", RT_RIGHT_PITCH.current, RT_RIGHT_PITCH.isActive ? 1 : 0);
-        Serial.printf("  - ROOM:    yaw=%d(%d) pitch=%d(%d) active=%d\n",
-                      SRV_YAW.current, SRV_YAW.target, SRV_PITCH.current, SRV_PITCH.target,
-                      (SRV_YAW.active || SRV_PITCH.active) ? 1 : 0);
-    }
-    // ============================
-    
     delay(1);
-
-
 }
