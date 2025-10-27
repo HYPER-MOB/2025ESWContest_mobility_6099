@@ -10,6 +10,10 @@
 #include <stdarg.h>
 #include <Preferences.h>
 
+enum class AxisDir : uint8_t;  // underlying type 명시 필수
+struct AxisConfig;
+struct AxisRuntime;
+
 // NVS ========================================================
 Preferences prefs;
 
@@ -36,39 +40,48 @@ static const char* CH = "twai0";
 static const int NODE_IDX = 2;
 static QueueHandle_t g_canRx;
 
-static uint32_t list_ids[]                = { BCAN_ID_DCU_RESET, BCAN_ID_DCU_MIRROR_ORDER };
-static const CanFilter f_list             = { CAN_FILTER_LIST, { .list = { list_ids,  2 } } };
+static uint32_t list_ids[]                = { BCAN_ID_DCU_RESET, BCAN_ID_DCU_MIRROR_ORDER, BCAN_ID_DCU_MIRROR_BUTTON };
+static const CanFilter f_list             = { CAN_FILTER_LIST, { .list = { list_ids,  3 } } };
 static const CanFilter f_any              = { CAN_FILTER_MASK, { .mask = { 0,         0 } } };
 
 int subID_all = -1;
 int subID_rx  = -1;
-int subID_dcu_mirror_order = -1;
-int subID_dcu_reset = -1;
 
 int jobID_pow_mirror_state = -1;
 // CAN ========================================================
 
 // PWM ========================================================
 Adafruit_PWMServoDriver pwm(0x40);  
-// 대략적인 펄스 경계 (필요시 보정)
-const int SERVO_MIN = 150; // ≈ 500us
-const int SERVO_MAX = 600; // ≈ 2500us
 
-const int PWM_SDA         = 21;
-const int PWM_SCL         = 22;
+const int PIN_PWM_SDA         = 21;
+const int PIN_PWM_SCL         = 22;
+
+static float g_pwm_freq_hz    = 50.0f;
+static float g_pwm_period_us  = 1000000.0f / 50.0f;
 
 struct ServoRt {
-  uint8_t  ch;              // PCA9685 채널 (0=room_yaw, 1=room_pitch 가정)
-  int      current = 90;    // 현재 각도(추적 값)
-  int      target  = 90;    // 목표 각도
-  int      start_val = 90;  // 이동 시작 시점 각도(보간 기준)
-  uint32_t start_ms = 0;    // 이동 시작 시각
-  uint32_t duration_ms = 0; // 이번 이동에 걸리는 총 시간
-  bool     active = false;  // 진행 중 여부
-  float    ms_per_deg = 5000.0f / 180.0f; // ★ 풀스트로크 5초 기준 속도(≈27.78ms/deg)
+    uint8_t  ch;              // PCA9685 채널 (0=room_yaw, 1=room_pitch 가정)
+    int      current = 90;    // 현재 각도(추적 값)
+    int      target  = 90;    // 목표 각도
+    int      start_val = 90;  // 이동 시작 시점 각도(보간 기준)
+    uint32_t start_ms = 0;    // 이동 시작 시각
+    uint32_t duration_ms = 0; // 이번 이동에 걸리는 총 시간
+    bool     active = false;  // 진행 중 여부
+    float    ms_per_deg = 5000.0f / 180.0f; // ★ 풀스트로크 5초 기준 속도(≈27.78ms/deg)
+    uint16_t min_us = 500;
+    uint16_t max_us = 2500;
+    int _last_set_deg = -1;
 };
-static ServoRt SRV_YAW   { .ch = 0 };
-static ServoRt SRV_PITCH { .ch = 1 };
+static ServoRt SRV_YAW   { .ch = 0, .min_us = 2000, .max_us = 2500 };
+static ServoRt SRV_PITCH { .ch = 1, .min_us = 2000, .max_us = 2500 };
+
+static inline uint16_t pwm_us_to_counts(float us) {
+  if (us < 0) us = 0;
+  float cnt = us * 4096.0f / g_pwm_period_us;
+  if (cnt < 0) cnt = 0;
+  if (cnt > 4095) cnt = 4095;
+  return (uint16_t)lroundf(cnt);
+}
 // PWM ========================================================
 
 // FSM ========================================================
@@ -79,6 +92,34 @@ State g_state = State::NotReady;
 State g_prevState = State::NotReady;
 uint32_t g_stateEnterMs = 0;
 
+int g_btn_left_yaw = 0, g_btn_left_pitch = 0, g_btn_right_yaw = 0, g_btn_right_pitch = 0, g_btn_room_yaw = 0, g_btn_room_pitch = 0;
+static uint32_t g_btn_ts_left_yaw = 0, g_btn_ts_left_pitch = 0, g_btn_ts_right_yaw = 0, g_btn_ts_right_pitch = 0, g_btn_ts_room_yaw = 0, g_btn_ts_room_pitch = 0;
+static const uint32_t BTN_TIMEOUT_MS = 100;
+static inline int btn_sign(int b) {
+    // 0=중립, 1=플러스(+), 2=마이너스(-)
+    return (b == 1) ? +1 : (b == 2) ? -1 : 0;
+}
+static inline int btn_with_timeout(int btn, uint32_t ts){
+  return (millis() - ts > BTN_TIMEOUT_MS) ? 0 : btn;
+}
+static inline void btn_resolve_mutex_pair(int &btnA, uint32_t tsA,
+                                            int &btnB, uint32_t tsB) {
+  // 타임아웃 반영(0으로 소거)
+  btnA = btn_with_timeout(btnA, tsA);
+  btnB = btn_with_timeout(btnB, tsB);
+
+  bool a = (btnA != 0);
+  bool b = (btnB != 0);
+
+  if (a && b) {
+    // 둘 다 눌려 있으면 최근에 눌린 쪽만 유지
+    if (tsA >= tsB) btnB = 0; else btnA = 0;
+  } else if (a) {
+    btnB = 0;        // A만 있으면 B는 무시
+  } else if (b) {
+    btnA = 0;        // B만 있으면 A는 무시
+  } // 둘 다 0이면 그대로
+}
 void fsm_enterState(State s);
 
 void fsm_onEnterNotReady();
@@ -92,17 +133,13 @@ void fsm_stateBusyLoop();
 
 // RELAY ======================================================
 
-// const int PIN_LEFT_FOLD_PLUS                = 13;
-// const int PIN_LEFT_FOLD_MINUS               = 14;
-const int PIN_LEFT_PIN_6                    = 16;
-const int PIN_LEFT_PIN_7                    = 17;
-const int PIN_LEFT_PIN_8                    = 18;
+const int PIN_LEFT_PIN_6                    = 13;
+const int PIN_LEFT_PIN_7                    = 14;
+const int PIN_LEFT_PIN_8                    = 16;
 
-// const int PIN_RIGHT_FOLD_PLUS               = 23;
-// const int PIN_RIGHT_FOLD_MINUS              = 25;
-const int PIN_RIGHT_PIN_6                   = 26;
-const int PIN_RIGHT_PIN_7                   = 27;
-const int PIN_RIGHT_PIN_8                   = 32;
+const int PIN_RIGHT_PIN_6                   = 17;
+const int PIN_RIGHT_PIN_7                   = 18;
+const int PIN_RIGHT_PIN_8                   = 19;
 
 static const uint32_t AXIS_MIN_SEG_MS = 120;
 static const uint32_t AXIS_MAX_SEG_MS = 7000;
@@ -116,7 +153,8 @@ enum class AxisPhase : uint8_t { Idle, PreHold, Moving, FinalHold };
 static const uint8_t MAX_PINS_PER_PATTERN = 3;
 struct AxisConfig {
     int min_val, max_val, def_val;
-    float stroke_ms, ms_per_unit;
+    float stroke_toMax_ms;
+    float stroke_toMin_ms;
     PinState onMoveToMin[MAX_PINS_PER_PATTERN]; 
     PinState onMoveToMax[MAX_PINS_PER_PATTERN]; 
     PinState onHold[MAX_PINS_PER_PATTERN];
@@ -136,8 +174,8 @@ AxisConfig CFG_LEFT_YAW = {
     .min_val        = 0,
     .max_val        = 180,
     .def_val        = 90,
-    .stroke_ms      = 6500.0f,
-    .ms_per_unit    = 6500.0f / 180,
+    .stroke_toMax_ms   = 6500.0f,
+    .stroke_toMin_ms   = 6500.0f, 
     .onMoveToMin    = { {PIN_LEFT_PIN_6, false}, {PIN_LEFT_PIN_7, true}, {PIN_LEFT_PIN_8, false} },
     .onMoveToMax    = { {PIN_LEFT_PIN_6, true}, {PIN_LEFT_PIN_7, false}, {PIN_LEFT_PIN_8, true} },
     .onHold         = { {PIN_LEFT_PIN_6, false}, {PIN_LEFT_PIN_7, false}, {PIN_LEFT_PIN_8, false} }
@@ -146,8 +184,8 @@ AxisConfig CFG_LEFT_PITCH = {
     .min_val        = 0,
     .max_val        = 180,
     .def_val        = 90,
-    .stroke_ms      = 6500.0f,
-    .ms_per_unit    = 6500.0f / 180,
+    .stroke_toMax_ms   = 6500.0f,
+    .stroke_toMin_ms   = 6500.0f, 
     .onMoveToMin    = { {PIN_LEFT_PIN_6, true}, {PIN_LEFT_PIN_7, false}, {PIN_LEFT_PIN_8, false} },
     .onMoveToMax    = { {PIN_LEFT_PIN_6, false}, {PIN_LEFT_PIN_7, true}, {PIN_LEFT_PIN_8, true} },
     .onHold         = { {PIN_LEFT_PIN_6, false}, {PIN_LEFT_PIN_7, false}, {PIN_LEFT_PIN_8, false} }
@@ -157,8 +195,8 @@ AxisConfig CFG_RIGHT_YAW = {
     .min_val        = 0,
     .max_val        = 180,
     .def_val        = 90,
-    .stroke_ms      = 6500.0f,
-    .ms_per_unit    = 6500.0f / 180,
+    .stroke_toMax_ms   = 6500.0f,
+    .stroke_toMin_ms   = 6500.0f, 
     .onMoveToMin    = { {PIN_RIGHT_PIN_6, false}, {PIN_RIGHT_PIN_7, true}, {PIN_RIGHT_PIN_8, false} },
     .onMoveToMax    = { {PIN_RIGHT_PIN_6, true}, {PIN_RIGHT_PIN_7, false}, {PIN_RIGHT_PIN_8, true} },
     .onHold         = { {PIN_RIGHT_PIN_6, false}, {PIN_RIGHT_PIN_7, false}, {PIN_RIGHT_PIN_8, false} }
@@ -167,8 +205,8 @@ AxisConfig CFG_RIGHT_PITCH = {
     .min_val        = 0,
     .max_val        = 180,
     .def_val        = 90,
-    .stroke_ms      = 6500.0f,
-    .ms_per_unit    = 6500.0f / 180,
+    .stroke_toMax_ms   = 6500.0f,
+    .stroke_toMin_ms   = 6500.0f, 
     .onMoveToMin    = { {PIN_RIGHT_PIN_6, true}, {PIN_RIGHT_PIN_7, false}, {PIN_RIGHT_PIN_8, false} },
     .onMoveToMax    = { {PIN_RIGHT_PIN_6, false}, {PIN_RIGHT_PIN_7, true}, {PIN_RIGHT_PIN_8, true} },
     .onHold         = { {PIN_RIGHT_PIN_6, false}, {PIN_RIGHT_PIN_7, false}, {PIN_RIGHT_PIN_8, false} }
@@ -187,6 +225,16 @@ static bool      g_ax_running = false;
 static uint32_t  g_ax_gap_ms = 0;
 static const uint32_t AX_GAP = 80;
 
+int PINS[] = {PIN_LEFT_PIN_6, PIN_LEFT_PIN_7, PIN_LEFT_PIN_8, PIN_RIGHT_PIN_6, PIN_RIGHT_PIN_7, PIN_RIGHT_PIN_8};
+static const int PINS_N = sizeof(PINS)/sizeof(PINS[0]);
+
+static inline float ms_per_unit_for(const AxisRuntime& rt, AxisDir d){
+    float span = (float)(rt.config.max_val - rt.config.min_val);
+    float stroke = (d == AxisDir::ToMax) ? rt.config.stroke_toMax_ms
+                                         : rt.config.stroke_toMin_ms;
+    return stroke / span;
+}
+
 // RELAY ======================================================
 
 // NVS Function ========================================================
@@ -195,17 +243,18 @@ static void nv_begin(){
     // 스키마 버전 없으면 최초 세팅
     uint16_t ver = prefs.getUShort(KEY_VER, 0);
     if (ver != NVS_SCHEMA){
+        prefs.clear();
         prefs.putUShort(KEY_VER, NVS_SCHEMA);
     }
 }
 
 static void nv_load_currents(){
-    RT_LEFT_YAW.current    = prefs.getShort(KEY_LY,  (short)RT_LEFT_YAW.config.def_val);
-    RT_LEFT_PITCH.current  = prefs.getShort(KEY_LP,  (short)RT_LEFT_PITCH.config.def_val);
-    RT_RIGHT_YAW.current   = prefs.getShort(KEY_RY,  (short)RT_RIGHT_YAW.config.def_val);
-    RT_RIGHT_PITCH.current = prefs.getShort(KEY_RP,  (short)RT_RIGHT_PITCH.config.def_val);
-    SRV_YAW.current         = prefs.getShort(KEY_RMY, (short)90);
-    SRV_PITCH.current       = prefs.getShort(KEY_RMP, (short)90);
+    RT_LEFT_YAW.current    = constrain((int)prefs.getShort(KEY_LY), RT_LEFT_YAW.config.min_val, RT_LEFT_YAW.config.max_val);
+    RT_LEFT_PITCH.current  = constrain((int)prefs.getShort(KEY_LP), RT_LEFT_PITCH.config.min_val, RT_LEFT_PITCH.config.max_val);
+    RT_RIGHT_YAW.current   = constrain((int)prefs.getShort(KEY_RY), RT_RIGHT_YAW.config.min_val, RT_RIGHT_YAW.config.max_val);
+    RT_RIGHT_PITCH.current = constrain((int)prefs.getShort(KEY_RP), RT_RIGHT_PITCH.config.min_val, RT_RIGHT_PITCH.config.max_val);
+    SRV_YAW.current         = prefs.getShort(KEY_RMY);
+    SRV_PITCH.current       = prefs.getShort(KEY_RMP);
     g_nvLastSaveMs = millis();
 }
 
@@ -302,34 +351,58 @@ static void can_setup(void){
 // CAN Function ========================================================
 
 // PWM Function ========================================================
-static int  pwm_pulse_from_angle(int deg) {
+static inline uint16_t pwm_us_from_angle(const ServoRt& s, int deg) {
     deg = constrain(deg, 0, 180);
-    return map(deg, 0, 180, SERVO_MIN, SERVO_MAX);
+    uint16_t us_min = s.min_us;
+    uint16_t us_max = s.max_us;
+    if (us_min > us_max) { uint16_t t = us_min; us_min = us_max; us_max = t; }
+
+    us_min = constrain(us_min, 400, 2600);
+    us_max = constrain(us_max, 400, 2600);
+
+    float us = us_min + ((us_max - us_min) * (deg / 180.0f));
+    return (uint16_t)lroundf(us);
 }
-static void pwm_setAngle(uint8_t ch, int deg) {
+static void pwm_setAngle(ServoRt& s, int deg) {
     deg = constrain(deg, 0, 180);
-    static int last_deg[16] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
-    if (ch >= 16 || deg == last_deg[ch]) return;
-    pwm.setPWM(ch, 0, pwm_pulse_from_angle(deg));
-    last_deg[ch] = deg;
+    if(deg == s._last_set_deg) return;
+
+    uint16_t us     = pwm_us_from_angle(s, deg);
+    uint16_t counts = pwm_us_to_counts(us);
+    pwm.setPWM(s.ch, 0, counts);
+    s._last_set_deg = deg;
 }
 static inline uint32_t pwm_duration_for(int from_deg, int to_deg, float ms_per_deg){
-  int d = abs(to_deg - from_deg);
-  uint32_t dur = (uint32_t)lroundf(d * ms_per_deg);
-  if (dur < 20)  dur = 20;        // 너무 짧은 펄스 방지
-  if (dur > 8000) dur = 8000;     // 안전 상한(선택)
-  return dur;
+    int d = abs(to_deg - from_deg);
+    uint32_t dur = (uint32_t)lroundf(d * ms_per_deg);
+    if (dur < 20)  dur = 20;        // 너무 짧은 펄스 방지
+    if (dur > 8000) dur = 8000;     // 안전 상한(선택)
+    return dur;
 }
 static inline int pwm_eval_now(const ServoRt& s, uint32_t now){
-  if (!s.active || s.duration_ms == 0) return s.current;
-  float t = (float)(now - s.start_ms) / (float)s.duration_ms;
-  if (t < 0) t = 0; if (t > 1) t = 1;
-  return (int)lroundf((1.0f - t) * s.start_val + t * (float)s.target);
+    if (!s.active || s.duration_ms == 0) return s.current;
+    float t = (float)(now - s.start_ms) / (float)s.duration_ms;
+    if (t < 0) t = 0; if (t > 1) t = 1;
+    return (int)lroundf((1.0f - t) * s.start_val + t * (float)s.target);
+}
+static inline int pwm_jog_step_for(const ServoRt& s){
+    float units = AXIS_MIN_SEG_MS / s.ms_per_deg;   // Seat/Wheel과 동일한 감각
+    if (units < 1.0f) units = 1.0f;
+    return (int)ceilf(units);
+}
+static void pwm_abort(ServoRt& s){
+    if (!s.active) return;
+    uint32_t now = millis();
+    s.current = pwm_eval_now(s, now);
+    s.active = false;
+    pwm_setAngle(s, s.current);
 }
 static void pwm_setup(void) {
-    Wire.begin(PWM_SDA, PWM_SCL);
+    Wire.begin(PIN_PWM_SDA, PIN_PWM_SCL);
     pwm.begin();
-    pwm.setPWMFreq(50);  // 서보는 50Hz
+    g_pwm_freq_hz   = 50.0f;                 // 필요시 사용자 지정
+    g_pwm_period_us = 1000000.0f / g_pwm_freq_hz;
+    pwm.setPWMFreq(g_pwm_freq_hz);
 }
 static void pwm_start(ServoRt& s, int newTarget){
     newTarget = constrain(newTarget, 0, 180);
@@ -341,7 +414,7 @@ static void pwm_start(ServoRt& s, int newTarget){
     if (from == newTarget){
         s.current = s.target = newTarget;
         s.active = false;
-        pwm_setAngle(s.ch, newTarget);   // 스냅
+        pwm_setAngle(s, newTarget);   // 스냅
         return;
     }
 
@@ -352,7 +425,7 @@ static void pwm_start(ServoRt& s, int newTarget){
     s.active      = true;
 
     // 바로 1틱 적용해도 됨(선택)
-    pwm_setAngle(s.ch, from);
+    pwm_setAngle(s, from);
 }
 static bool pwm_update(ServoRt& s){
     if (!s.active) return true;
@@ -365,12 +438,13 @@ static bool pwm_update(ServoRt& s){
     int cur = (int)lroundf((1.0f - t) * s.start_val + t * (float)s.target);
     cur = constrain(cur, 0, 180);
     s.current = cur;
-    pwm_setAngle(s.ch, cur);
+    pwm_setAngle(s, cur);
 
     if (elapsed >= s.duration_ms){
         s.active = false;
         s.current = s.target;
-        pwm_setAngle(s.ch, s.target);  // 최종 스냅
+        pwm_setAngle(s, s.target);  // 최종 스냅
+        nv_save_currents_if_due(true);
         return true;
     }
     return false;
@@ -378,9 +452,22 @@ static bool pwm_update(ServoRt& s){
 static inline bool pwm_all_done() {
     return !SRV_YAW.active && !SRV_PITCH.active;
 }
+static void pwm_button(ServoRt& s, int btn){
+    int sign = btn_sign(btn); // 0, +1, -1
+    if (sign == 0){
+        pwm_abort(s); // 즉시 멈춤
+        return;
+    }
+    uint32_t now = millis();
+    int from = s.active ? pwm_eval_now(s, now) : s.current;
+    int step = pwm_jog_step_for(s);
+    int newTarget = constrain(from + sign * step, 0, 180);
+    pwm_start(s, newTarget);
+}
 // PWM Function ========================================================
 
 // REALY Function ======================================================
+
 static void relay_apply_pins(const PinState pins[], uint8_t n = MAX_PINS_PER_PATTERN) {
     for(uint8_t i = 0; i < n; ++i) {
         if(pins[i].pinIndex <= 0) continue;
@@ -411,21 +498,31 @@ static void relay_start(AxisRuntime& rt) {
         return;
     }
 
-    float k = cfg.ms_per_unit;
+    AxisDir newDir = (delta > 0) ? AxisDir::ToMax : AxisDir::ToMin;
+
+    float k = ms_per_unit_for(rt, newDir);
     uint32_t dur = (uint32_t)(fabsf((float)delta) * k);
     if(dur < AXIS_MIN_SEG_MS) dur = AXIS_MIN_SEG_MS;
     if(dur > AXIS_MAX_SEG_MS) dur = AXIS_MAX_SEG_MS;
 
     rt.duration_ms = dur;
-    rt.start_ms = millis();
     rt.start_val = rt.current;
-    rt.dir = (delta > 0) ? AxisDir::ToMax : AxisDir::ToMin;
+    rt.dir = newDir;
     rt.isActive = true;
 
-    relay_apply_hold(cfg);
-    rt.lastApplied = AxisDir::Hold;
-    rt.phase = AxisPhase::PreHold;
-    rt.phase_ts = millis();
+    const uint32_t now = millis();
+
+    if(rt.lastApplied == newDir) {
+        rt.phase = AxisPhase::Moving;
+        rt.phase_ts = now;
+        rt.start_ms = now;
+    }
+    else {
+        relay_apply_hold(cfg);
+        rt.lastApplied = AxisDir::Hold;
+        rt.phase = AxisPhase::PreHold;
+        rt.phase_ts = now;
+    }
 }
 
 static bool relay_update(AxisRuntime& rt) {
@@ -473,10 +570,8 @@ static bool relay_update(AxisRuntime& rt) {
 }
 
 static void relay_setup() {
-    pinMode(PIN_LEFT_PIN_6,  OUTPUT);   pinMode(PIN_LEFT_PIN_7,  OUTPUT);  pinMode(PIN_LEFT_PIN_8,  OUTPUT);
-    pinMode(PIN_RIGHT_PIN_6, OUTPUT);   pinMode(PIN_RIGHT_PIN_7, OUTPUT);  pinMode(PIN_RIGHT_PIN_8, OUTPUT);
-    relay_apply_hold(CFG_LEFT_PITCH);   relay_apply_hold(CFG_LEFT_YAW);
-    relay_apply_hold(CFG_RIGHT_PITCH);  relay_apply_hold(CFG_RIGHT_YAW);
+    for(int i = 0; i < PINS_N; ++i) pinMode(PINS[i], OUTPUT);
+    for(int i = 0; i < AXES_N; ++i) relay_apply_hold(AXES[i]->config);
 }
 
 static void relay_seq_start() {
@@ -486,22 +581,112 @@ static void relay_seq_start() {
 }
 
 static bool relay_seq_update() {
-    if (!g_ax_running) return true;
+    // 갭 상태라면, 갭이 끝났는지 검사해서 다음 축을 시작
+    if (!g_ax_running) {
+        if (g_ax_idx >= AXES_N) return true; // 모든 축 완료
 
-    if(relay_update(*AXES[g_ax_idx])) {
-        g_ax_idx++;
-        if(g_ax_idx >= AXES_N) {g_ax_running = false; return true;}
-        g_ax_gap_ms = millis();
-    }
-
-    if(!g_ax_running && g_ax_idx < AXES_N) {
-        if(millis() - g_ax_gap_ms >= AX_GAP) {
+        if (millis() - g_ax_gap_ms >= AX_GAP) {
             g_ax_running = true;
-            relay_start(*AXES[g_ax_idx]);
+            relay_start(*AXES[g_ax_idx]); // 다음 축 시작
         }
+        return false; // 아직 진행 중
     }
 
-    return false;
+    // 러닝 상태: 현재 축을 진행
+    if (relay_update(*AXES[g_ax_idx])) {
+        // 현재 축 완료
+        g_ax_idx++;
+        if (g_ax_idx >= AXES_N) {
+            g_ax_running = false;
+            return true; // 전체 완료
+        }
+        // 다음 축 시작 전 갭으로 전환
+        g_ax_running = false;
+        g_ax_gap_ms = millis();
+        return false;
+    }
+
+    return false; // 아직 진행 중
+}
+
+static inline int jog_step_for(const AxisRuntime& rt, AxisDir d) {
+    // 세그먼트가 AXIS_MIN_SEG_MS 이상이 되도록 단위(step) 계산
+    float units = AXIS_MIN_SEG_MS / ms_per_unit_for(rt, d);;
+    if (units < 1.0f) units = 1.0f;
+    int step = (int)ceilf(units);
+    // 한 번에 전체 스트로크를 넘지 않도록 안전 제한
+    int maxSpan = rt.config.max_val - rt.config.min_val;
+    if (step > maxSpan) step = maxSpan;
+    return step;
+}
+
+static inline int axis_eval_now(const AxisRuntime& rt, uint32_t now) {
+    if (!rt.isActive || rt.phase != AxisPhase::Moving || rt.duration_ms == 0) return rt.current;
+    float t = (float)(now - rt.start_ms) / (float)rt.duration_ms;
+    if (t < 0) t = 0; if (t > 1) t = 1;
+    return (int)lroundf((1.0f - t) * rt.start_val + t * (float)rt.target);
+}
+
+static inline void relay_abort(AxisRuntime& rt) {
+    if (!rt.isActive) return;
+    uint32_t now = millis();
+    int cur = axis_eval_now(rt, now); // 진행 중이면 현재 위치 보간
+    rt.current = cur;
+    relay_apply_hold(rt.config);      // 핀 즉시 Hold로
+    rt.isActive   = false;
+    rt.phase      = AxisPhase::Idle;
+    rt.dir        = AxisDir::Hold;
+    rt.lastApplied= AxisDir::Hold;    // 다음에 누르면 데드타임 정상 적용
+    nv_save_currents_if_due(/*force=*/true); // 선택: 현재값 저장
+}
+
+static void relay_button(AxisRuntime& rt, int btn) {
+    int s = btn_sign(btn);                // 0, +1, -1
+    if (s == 0) {
+        relay_abort(rt);  // ★ 즉시 멈춤
+        return;
+    }
+
+    AxisDir wantDir = (s > 0) ? AxisDir::ToMax : AxisDir::ToMin;
+
+    // ===== 이동 중 "같은 방향"이면 타깃을 연장 (데드타임 스킵) =====
+    if (rt.isActive && rt.phase == AxisPhase::Moving) {
+        
+        if (rt.lastApplied == wantDir) {
+            uint32_t now = millis();
+            int cur = axis_eval_now(rt, now);
+            int step = jog_step_for(rt, wantDir);
+
+            int wantTarget = constrain(rt.target + s * step, rt.config.min_val, rt.config.max_val);
+            if (wantTarget != rt.target) {
+                // 지금 위치(cur)에서 새 타깃으로 계속 진행 (핀 상태/phase 유지)
+                rt.start_val   = cur;
+                rt.target      = wantTarget;
+                rt.start_ms    = now;
+                float k        = ms_per_unit_for(rt, wantDir);
+                uint32_t dur   = (uint32_t)lroundf(fabsf((float)(rt.target - cur)) * k);
+                if (dur < AXIS_MIN_SEG_MS) dur = AXIS_MIN_SEG_MS;
+                if (dur > AXIS_MAX_SEG_MS) dur = AXIS_MAX_SEG_MS;
+                rt.duration_ms = dur;
+                // phase=Moving / lastApplied = wantDir 그대로 유지
+            }
+            // 같은 방향 이동 연장 처리 끝
+            return;
+        }
+        // 이동 중인데 방향이 다르면 일단 업데이트 진행
+        if (!relay_update(rt)) return;
+    } else if (rt.isActive) {
+        // Moving이 아니면(PreHold/FinalHold 등) 일단 업데이트
+        if (!relay_update(rt)) return;
+    }
+
+    // ===== 여기서부터는 비활성(Idle/FinalHold 이후) 또는 갓 완료된 경우: 새 세그먼트 시작 =====
+    int step = jog_step_for(rt, wantDir);
+    int nextTarget = constrain(rt.current + s * step, rt.config.min_val, rt.config.max_val);
+    if (nextTarget == rt.current) return;   // 더 갈 데 없으면 무시
+
+    rt.target = nextTarget;
+    relay_start(rt); // relay_start()는 lastApplied==dir이면 PreHold 스킵하고 Moving으로 직행
 }
 
 // REALY Function ======================================================
@@ -546,6 +731,15 @@ void fsm_setTargetStatus(const CanMessage *message) {
     SRV_PITCH.target        = constrain(message->dcu_mirror_order.sig_mirror_room_pitch, 0, 180);
 }
 
+void fsm_setButtonStatus(const CanMessage *message) {
+    g_btn_left_pitch = constrain(message->dcu_mirror_button.sig_mirror_left_pitch_button, 0, 2);    g_btn_ts_left_pitch = millis();
+    g_btn_left_yaw   = constrain(message->dcu_mirror_button.sig_mirror_left_yaw_button, 0, 2);      g_btn_ts_left_yaw   = millis();
+    g_btn_right_pitch= constrain(message->dcu_mirror_button.sig_mirror_right_pitch_button, 0, 2);   g_btn_ts_right_pitch= millis();
+    g_btn_right_yaw  = constrain(message->dcu_mirror_button.sig_mirror_right_yaw_button, 0, 2);     g_btn_ts_right_yaw  = millis();
+    g_btn_room_pitch = constrain(message->dcu_mirror_button.sig_mirror_room_pitch_button, 0, 2);    g_btn_ts_room_pitch = millis();
+    g_btn_room_yaw   = constrain(message->dcu_mirror_button.sig_mirror_room_yaw_button, 0, 2);      g_btn_ts_room_yaw   = millis();
+}
+
 bool fsm_handleMessage() {
     CanFrame canFrame;
     while(xQueueReceive(g_canRx, &canFrame, 0) == pdTRUE) {
@@ -555,6 +749,7 @@ bool fsm_handleMessage() {
             switch(id) {
                 case BCAN_ID_DCU_RESET:        fsm_enterState(State::NotReady); return true;
                 case BCAN_ID_DCU_MIRROR_ORDER:  if(g_state == State::Ready) { fsm_setTargetStatus(&message); fsm_enterState(State::Busy); return true; } break;
+                case BCAN_ID_DCU_MIRROR_BUTTON: if(g_state == State::Ready) { fsm_setButtonStatus(&message); } break;
             }
         }
     }
@@ -575,16 +770,15 @@ static uint8_t   g_ackTries        = 0;
 static const uint8_t ACK_MAX_TRIES = 10;     // 필요시 제한(선택)
 
 void fsm_onEnterNotReady() {
-    pwm_start(SRV_YAW,      90);
-    pwm_start(SRV_PITCH,    90);
     // 릴레이 안전 정지
-    relay_apply_hold(RT_LEFT_PITCH.config); relay_apply_hold(RT_LEFT_YAW.config);
-    relay_apply_hold(RT_RIGHT_YAW.config);  relay_apply_hold(RT_RIGHT_PITCH.config);
-    // 축 상태 초기화
-    RT_LEFT_YAW.isActive = RT_LEFT_PITCH.isActive = false;
-    RT_RIGHT_YAW.isActive = RT_RIGHT_PITCH.isActive = false;
-    RT_LEFT_YAW.phase = RT_LEFT_PITCH.phase = AxisPhase::Idle;
-    RT_RIGHT_YAW.phase = RT_RIGHT_PITCH.phase = AxisPhase::Idle;
+    for(int i = 0; i < AXES_N; ++i) {
+        relay_apply_hold(AXES[i]->config);
+        AXES[i]->isActive = false;
+        AXES[i]->phase = AxisPhase::Idle;
+    }
+
+    pwm_start(SRV_YAW,   90);
+    pwm_start(SRV_PITCH, 90);
 
     relay_seq_start();
 
@@ -601,7 +795,6 @@ void fsm_stateNotReadyLoop() {
         case NRPhase::Homing: {
             bool relay_done = relay_seq_update();
             bool pwm_done   = pwm_all_done();
-
             if(relay_done && pwm_done) {
                 g_nrPhase = NRPhase::AckPending;
                 g_ackLastTryMs = 0;     g_ackTries = 0;
@@ -644,8 +837,28 @@ void fsm_onEnterReady() {
 
 void fsm_stateReadyLoop() {
     if (fsm_handleMessage()) return;
+    int btn_lp = g_btn_left_pitch;
+    int btn_ly = g_btn_left_yaw;
+    btn_resolve_mutex_pair(btn_lp, g_btn_ts_left_pitch, btn_ly, g_btn_ts_left_yaw);
 
+    relay_button(RT_LEFT_PITCH, btn_lp);
+    relay_button(RT_LEFT_YAW,   btn_ly);
 
+    int btn_rp = g_btn_right_pitch;
+    int btn_ry = g_btn_right_yaw;
+    btn_resolve_mutex_pair(btn_rp, g_btn_ts_right_pitch, btn_ry, g_btn_ts_right_yaw);
+
+    relay_button(RT_RIGHT_PITCH, btn_rp);
+    relay_button(RT_RIGHT_YAW,   btn_ry);
+
+    pwm_button(SRV_YAW,   btn_with_timeout(g_btn_room_yaw,   g_btn_ts_room_yaw));
+    pwm_button(SRV_PITCH, btn_with_timeout(g_btn_room_pitch, g_btn_ts_room_pitch));
+
+    // 2) 항상 보간을 진행하여 current를 갱신
+    (void)relay_update(RT_LEFT_PITCH);
+    (void)relay_update(RT_LEFT_YAW);
+    (void)relay_update(RT_RIGHT_PITCH);
+    (void)relay_update(RT_RIGHT_YAW);
 }
 
 void fsm_onEnterBusy() {
@@ -681,9 +894,37 @@ void setup() {
 }
 
 void loop() {
-    fsm_loop();
     pwm_update(SRV_YAW);
     pwm_update(SRV_PITCH);
+    fsm_loop();
     nv_save_currents_if_due(/*force=*/false); // ★ 선택: 주기적 저장
+
+    // === 디버그 출력 (1초마다) ===
+    static uint32_t lastDebugMs = 0;
+    uint32_t now = millis();
+    if(now - lastDebugMs >= 1000) {
+        lastDebugMs = now;
+
+        const char* stateStr = "";
+        switch (g_state) {
+            case State::NotReady: stateStr = "NotReady"; break;
+            case State::Ready:    stateStr = "Ready";    break;
+            case State::Busy:     stateStr = "Busy";     break;
+            default:              stateStr = "Unknown";  break;
+        }
+
+        Serial.printf("[DEBUG] State=%s(%d)\n", stateStr, (int)g_state);
+        Serial.printf("  - L_YAW:   cur=%d, active=%d\n", RT_LEFT_YAW.current, RT_LEFT_YAW.isActive ? 1 : 0);
+        Serial.printf("  - L_PITCH: cur=%d, active=%d\n", RT_LEFT_PITCH.current, RT_LEFT_PITCH.isActive ? 1 : 0);
+        Serial.printf("  - R_YAW:   cur=%d, active=%d\n", RT_RIGHT_YAW.current, RT_RIGHT_YAW.isActive ? 1 : 0);
+        Serial.printf("  - R_PITCH: cur=%d, active=%d\n", RT_RIGHT_PITCH.current, RT_RIGHT_PITCH.isActive ? 1 : 0);
+        Serial.printf("  - ROOM:    yaw=%d(%d) pitch=%d(%d) active=%d\n",
+                      SRV_YAW.current, SRV_YAW.target, SRV_PITCH.current, SRV_PITCH.target,
+                      (SRV_YAW.active || SRV_PITCH.active) ? 1 : 0);
+    }
+    // ============================
+    
     delay(1);
+
+
 }
