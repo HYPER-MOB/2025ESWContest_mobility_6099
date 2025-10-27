@@ -19,6 +19,10 @@ typedef union {
 
     struct {
         uint8_t sig_flag;
+    } dcu_sca_drive_status;
+
+    struct {
+        uint8_t sig_flag;
     } dcu_sca_user_face_req;
 
     struct {
@@ -197,6 +201,7 @@ typedef enum {
     PCAN_ID_DCU_RESET_ACK                       = 0x002,
 
     PCAN_ID_SCA_DCU_DRIVER_EVENT                = 0x003,
+    PCAN_ID_DCU_SCA_DRIVE_STATUS                = 0x005,
 
     PCAN_ID_DCU_SCA_USER_FACE_REQ               = 0x101,
     PCAN_ID_SCA_TCU_USER_INFO_REQ               = 0x102,
@@ -229,6 +234,7 @@ typedef enum {
     PCAN_DLC_DCU_RESET_ACK                       = 2,
 
     PCAN_DLC_SCA_DCU_DRIVER_EVENT                = 1,
+    PCAN_DLC_DCU_SCA_DRIVE_STATUS                = 1,
 
     PCAN_DLC_DCU_SCA_USER_FACE_REQ               = 1,
     PCAN_DLC_SCA_TCU_USER_INFO_REQ               = 1,
