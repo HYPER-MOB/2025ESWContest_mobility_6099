@@ -4,7 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <mutex>
-#include <vector>
+#include <std::vector>
 
 struct CanSlot {
     uint32_t id = 0;
@@ -16,7 +16,7 @@ struct CanSlot {
 };
 
 struct SharedMem {
-    std::vector<CanSlot> slots;
+    std::std::vector<CanSlot> slots;
     std::mutex m;
     CanSlot& ensure_slot(uint32_t id, int period_ms) {
         std::lock_guard<std::mutex> lk(m);

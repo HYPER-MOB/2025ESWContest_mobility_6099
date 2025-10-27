@@ -4,20 +4,10 @@
 #include <gio/gio.h>
 #include <glib.h>
 
-/*
- * BlueZ GATT Peripheral�� ���μ��� ������ ���� �����ϴ� ���.
- * ���� �ܵ� ��������(main) ���¿��� �ڵ带 ���̺귯��ȭ��.
- *
- * ����:
- *  - ������ Service UUID�� Characteristic(UUID ����)�� Peripheral ���
- *  - ����Ʈ���� Char�� ����(Write)�ϸ� �ݹ�/��� ���� ����
- *  - Ÿ�Ӿƿ�/�������� ���ο��� ����
- */
-
 namespace sca {
 
     struct BleConfig {
-        std::string hash12;          // UUID�� ������ 12�ڸ�(��: "A1B2C3D4E5F6")
+        std::string hash12;        
         std::string local_name{ "SCA-CAR" };
         std::string expected_token{ "ACCESS" };
         int         timeout_sec{ 30 };
@@ -25,23 +15,19 @@ namespace sca {
     };
 
     struct BleResult {
-        bool ok{ false };              // expected_token�� ��ġ�ϴ� �����Ͱ� ���̸� true
-        bool wrote{ false };           // � ���̵� Write �̺�Ʈ�� �߻��ߴ���
-        std::string written_data;    // Ŭ���̾�Ʈ�� �� ������(�״�� �ؽ�Ʈ��)
-        std::string adapter_path;    // ���� ����� ���
+        bool ok{ false };            
+        bool wrote{ false };         
+        std::string written_data;   
+        std::string adapter_path;  
     };
 
     class BlePeripheral {
     public:
         BlePeripheral();
         ~BlePeripheral();
-
-        // ���� ����: ��� �� ���� �� (Write ���� or Ÿ�Ӿƿ�) �� ���� �� ��� ��ȯ
-        // ����(��ū��ġ) �� true, �ƴϸ� false
         bool run(const BleConfig& cfg, BleResult& out);
 
     private:
-        // ���� ����
         BleConfig cfg_;
         BleResult res_;
         std::string service_uuid_;
@@ -60,22 +46,18 @@ namespace sca {
         const char* CHAR_PATH = "/com/sca/app/service0/char0";
         const char* ADV_PATH = "/com/sca/app/adv0";
 
-        // ���� ��ƿ
         static std::string build_service_uuid(const std::string& hash12);
         std::string get_adapter_path();
         bool call_set(const std::string& objpath, const char* iface, const char* prop, GVariant* v);
 
-        // ���/����
         bool export_objects();
         void unexport_objects();
         bool register_app(const std::string& adapter);
         bool register_adv(const std::string& adapter);
         void unregister_adv(const std::string& adapter);
 
-        // �ݹ�/����
         void quit_loop(bool ok);
 
-        // ���� �ڵ鷯���� this�� ���� ���� static ����
         static BlePeripheral* s_self;
 
         // ==== DBus XML/VTABLE ====
@@ -107,7 +89,6 @@ namespace sca {
         static const GDBusInterfaceVTable ADV_VTABLE;
         static const GDBusInterfaceVTable OBJMGR_VTABLE;
 
-        // ���� �÷���
         bool done_{ false };
         bool ok_{ false };
     };

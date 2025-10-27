@@ -7,6 +7,37 @@
 #include "nfc_reader.hpp"
 #include <array>
 #include <cstdint>
+uint32_t bswap32(uint32_t v) {
+    return ((v & 0x000000FFu) << 24) |
+        ((v & 0x0000FF00u) << 8) |
+        ((v & 0x00FF0000u) >> 8) |
+        ((v & 0xFF000000u) >> 24);
+}
+static bool bytes_from_hex_relaxed(const std::string& in, uint8_t* out, int max_len, int& written) {
+    written = 0;
+    if (!out || max_len <= 0) return false;
+
+    // 정규화: 공백/하이픈/콜론 제거 + 0x prefix 제거 + 대문자화
+    size_t i = 0;
+
+    const int need = (int)(in.size() / 2);
+    if (need > max_len) return false;
+
+    auto nib = [](char c)->int {
+        if ('0' <= c && c <= '9') return c - '0';
+        if ('A' <= c && c <= 'F') return 10 + (c - 'A');
+        return -1;
+        };
+
+    for (int k = 0; k < need; ++k) {
+        int hi = nib(in[2 * k + 0]);
+        int lo = nib(in[2 * k + 1]);
+        if (hi < 0 || lo < 0) return false;
+        out[k] = (uint8_t)((hi << 4) | lo);
+    }
+    written = need;
+    return true;
+}
 extern "C" bool sca_ble_advertise_and_wait(std::string uuid_last12,
     std::string local_name,
     int timeout_s) {
@@ -19,32 +50,6 @@ extern "C" bool sca_ble_advertise_and_wait(std::string uuid_last12,
     sca::BlePeripheral p;
     sca::BleResult     out{};
     return p.run(cfg, out);
-}
-
-static bool bytes_from_hex_relaxed(const std::string& in, uint8_t* out, int max_len, int& written) {
-    written = 0;
-    if (!out || max_len <= 0) return false;
-
-    // 정규화: 공백/하이픈/콜론 제거 + 0x prefix 제거 + 대문자화
-    size_t i = 0;
-
-    const int need = (int)(in.size()/2);
-    if (need > max_len) return false;
-
-    auto nib = [](char c)->int {
-        if ('0'<=c && c<='9') return c - '0';
-        if ('A'<=c && c<='F') return 10 + (c - 'A');
-        return -1;
-    };
-
-    for (int k=0; k<need; ++k) {
-        int hi = nib(in[2*k+0]);
-        int lo = nib(in[2*k+1]);
-        if (hi<0 || lo<0) return false;
-        out[k] = (uint8_t)((hi<<4)|lo);
-}
-    written = need;
-    return true;
 }
 
 extern "C" bool nfc_read_uid(uint8_t* out, int len, int timeout_s) {
@@ -131,6 +136,7 @@ bool Sequencer::perform_ble_() {
     return matched;
 }
 bool Sequencer::perform_cam_() {
+    cam_data_setting(&cam_data_);
     return true;
 }
 void Sequencer::on_can_rx(const CanFrame& f) {
@@ -169,9 +175,25 @@ void Sequencer::on_can_rx(const CanFrame& f) {
         break;
     }
     case BCAN_ID_TCU_SCA_USER_INFO: {
-        // 카메라 데이터 처리
-        if(1)have_collected_cam_;
-        if (f.dlc >= 4) {
+        uint32_t v;
+        std::memcpy(&v, f.data, 4);
+
+        if (f.dlc == 8) {
+            if (v & 0x0000FFFF == 0x0000FFFF) {
+                have_collected_cam_ = true;
+                ack_user_info_(/*index=*/2, /*state=*/0);
+                break;
+            }
+            else
+            {
+                uint32_t idx;
+                float data;
+                std::memcpy(&idx, f.data, 4);
+                std::memcpy(&data, f.data + sizeof(uint8_t) * 4, 4);
+                cam_data_[cam_data_cnt].first = idx;
+                cam_data_[cam_data_cnt].second = data;
+                cam_data_cnt++;
+            }
             ack_user_info_(/*index=*/2, /*state=*/0);
         }
         else {
@@ -225,8 +247,6 @@ void Sequencer::tick() {
     }
      case AuthStep::BLE_Wait: {
         if (!ok) {
-<<<<<<< HEAD
-<<<<<<< HEAD
             std::printf("[BLE] Fail\n");
             send_auth_state_(static_cast<uint8_t>(AuthStep::BLE), AuthStateFlag::FAIL);
             send_auth_result_(FALSE);
@@ -261,39 +281,6 @@ void Sequencer::tick() {
          reset_to_idle_();
          break;
      }
-=======
-        std::printf("[BLE] Fail\n");
-        send_auth_result_(false);
-        reset_to_idle_();
-        }
-    else{
-        std::printf("[BLE] End\n");
-        send_auth_result_(true);
-    }
-        break;
-    }
-=======
-        std::printf("[BLE] Fail\n");
-        send_auth_result_(false);
-        reset_to_idle_();
-        }
-    else{
-        std::printf("[BLE] End\n");
-        send_auth_result_(true);
-    }
-        break;
-    }
->>>>>>> d513db5d4f7a60196f6d725e3e7f5fce57a6b5bf
-    case AuthStep::CAMERA:{
-
-    }
-    case AuthStep::CAMERA_Wait:{
-
-    }
-<<<<<<< HEAD
->>>>>>> fix :  블루투스 수정 및 step 카메라 추가 [SCA-Core]
-=======
->>>>>>> d513db5d4f7a60196f6d725e3e7f5fce57a6b5bf
     case AuthStep::Idle:
     case AuthStep::Done:
     default:

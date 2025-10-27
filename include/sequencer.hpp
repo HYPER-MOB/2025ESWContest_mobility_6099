@@ -4,6 +4,7 @@
 #include <atomic>
 #include <mutex>
 #include <optional>
+#include <vector>
 #include <string>
 
 #include "can_api.hpp"
@@ -14,25 +15,11 @@ enum class AuthStep : uint8_t {
     Idle       = 0,
     WaitingTCU = 1,
     NFC        = 2,
-<<<<<<< HEAD
-<<<<<<< HEAD
     BLE        = 3,
-    CAM     = 4,
+    CAM        = 4,
     NFC_Wait   = 5,
     BLE_Wait   = 6,
-    CAM_Wait= 7,
-=======
-=======
->>>>>>> d513db5d4f7a60196f6d725e3e7f5fce57a6b5bf
-    NFC_Wait   = 3,
-    BLE        = 4,
-    BLE_Wait   = 5,
-    CAMERA     = 6,
-    CAMERA_Wait= 7,
-<<<<<<< HEAD
->>>>>>> fix :  블루투스 수정 및 step 카메라 추가 [SCA-Core]
-=======
->>>>>>> d513db5d4f7a60196f6d725e3e7f5fce57a6b5bf
+    CAM_Wait   = 7,
     Done       = 8
 };
 
@@ -49,6 +36,8 @@ struct SequencerConfig {
     int         ble_timeout_s  = 30;
 
     int         nfc_timeout_s  = 5;
+    std::vector<std::pair<uint32_t, float>> cam_data_;
+
     std::string expected_uid_hex;
 
     std::string ble_token_fallback = "ACCESS";
@@ -66,6 +55,7 @@ public:
 
 private:
     bool ok;
+    int cam_data_cnt;
     SequencerConfig cfg_;
     std::atomic<AuthStep> step_{AuthStep::Idle};
     std::mutex m_;
