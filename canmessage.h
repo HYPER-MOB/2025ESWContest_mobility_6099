@@ -1,7 +1,6 @@
 #pragma once
 #include <stdint.h>
 #include "can_api.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -167,6 +166,27 @@ typedef union {
         uint8_t sig_wheel_status;  
     } pow_wheel_state;
 
+    struct {
+        uint8_t sig_seat_position_button;      
+        uint8_t sig_seat_angle_button; 
+        uint8_t sig_seat_front_height_button;  
+        uint8_t sig_seat_rear_height_button;    
+    } dcu_seat_button;
+
+    struct {
+        uint8_t sig_mirror_left_yaw_button;  
+        uint8_t sig_mirror_left_pitch_button;     
+        uint8_t sig_mirror_right_yaw_button; 
+        uint8_t sig_mirror_right_pitch_button;    
+        uint8_t sig_mirror_room_yaw_button;    
+        uint8_t sig_mirror_room_pitch_button; 
+    } dcu_mirror_button;
+    
+    struct {
+        uint8_t sig_wheel_position_button;      
+        uint8_t sig_wheel_angle_button;  
+    } dcu_wheel_button;
+
     // ... 메시지별 struct 추가
 } CanMessage;
 
@@ -241,7 +261,11 @@ typedef enum {
 
     BCAN_ID_POW_SEAT_STATE                  = 0x201,
     BCAN_ID_POW_MIRROR_STATE                = 0x202,
-    BCAN_ID_POW_WHEEL_STATE                 = 0x203
+    BCAN_ID_POW_WHEEL_STATE                 = 0x203,
+
+    BCAN_ID_DCU_SEAT_BUTTON                 = 0x301,
+    BCAN_ID_DCU_MIRROR_BUTTON               = 0x302,
+    BCAN_ID_DCU_WHEEL_BUTTON                = 0x303,
     // ...
 } can_msg_bcan_id_t;
 
@@ -253,7 +277,10 @@ typedef enum {
     BCAN_DLC_DCU_WHEEL_ORDER                 = 2,
     BCAN_DLC_POW_SEAT_STATE                  = 6,
     BCAN_DLC_POW_MIRROR_STATE                = 7,
-    BCAN_DLC_POW_WHEEL_STATE                 = 3
+    BCAN_DLC_POW_WHEEL_STATE                 = 3,
+    BCAN_DLC_DCU_SEAT_BUTTON                 = 4,
+    BCAN_DLC_DCU_MIRROR_BUTTON               = 6,
+    BCAN_DLC_DCU_WHEEL_BUTTON                = 2,
 } can_msg_bcan_dlc_t;
 
 
