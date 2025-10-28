@@ -427,13 +427,13 @@ if (fr->id == ID_SCA_DCU_AUTH_STATE && fr->dlc >= 2) {
         // step 값에 따라 메시지 분기
         switch (step) {
         case 1:
-            msg = "얼굴 인증중입니다..";
+            msg = "NFC인증 중입니다..";
             break;
         case 2:
             msg = "Bluetooth 인증중입니다..";
             break;
         case 3:
-            msg = "NFC인증 중입니다..";
+            msg = "얼굴 인증중입니다..";
             break;
         default:
             msg = QString("Auth step=%1 state=%2").arg(step).arg(state);
