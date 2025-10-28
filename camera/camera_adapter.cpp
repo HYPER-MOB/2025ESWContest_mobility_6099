@@ -28,7 +28,6 @@ namespace sca {
 	{
 		cfg.curStep=eInput::Default;
 		cfg.inputStep=eInput::Default;
-		cfg.result = false;
 
 		PATH_AI = get_ai_path();
 		std::filesystem::path script = PATH_AI / ai_filename(type?eFile::Auth:eFile::Drive);
@@ -85,11 +84,10 @@ namespace sca {
     }
 
     const std::filesystem::path out = PATH_AI / ai_filename(eFile::Output);
-    const char* val = read_single_char_code(out.string());
+    const int* val = read_single_char_code(out.string());
     if (val < 0) {
         return 4;
     }
-
     switch (val) {
     case '0'://Terminate
         if (cfg.inputStep == eInput::eI_Terminate) {
@@ -128,6 +126,7 @@ namespace sca {
         break;
 
     default:
+		std::printf("[TEST output reading %c \n", val);
         break;
     }
     return 0;
