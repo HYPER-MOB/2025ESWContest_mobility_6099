@@ -5,7 +5,7 @@
 - **상위 API (`can_api`)** 만 호출하면 동작
 - 하드웨어별/운영체제별 처리는 **Adapter**가 캡슐화
 - **자동 Bring-up 지원**: Linux 환경에서는 `ip link set …` 없이 코드에서 인터페이스 활성화
-- Linux(SocketCAN) / ESP32(TWAI) / Debug(PC) 환경 모두 지원
+- Linux(SocketCAN) / ESP32(TWAI) 환경 모두 지원
 
 ---
 
@@ -162,15 +162,7 @@ can_dispose();
 
 ---
 
-### 2. Jetson Nano (MCP2515)
-
-- 라즈베리파이와 원리 동일
-- `/boot/extlinux/extlinux.conf` 에 DT overlay 적용
-- `can0` 인터페이스가 노출되면 이후는 라이브러리가 자동 처리
-
----
-
-### 3. ESP32-WROOM-32 (TWAI)
+### 2. ESP32-WROOM-32 (TWAI)
 
 - ESP32는 내장 CAN(TWAI) 컨트롤러 사용 → 트랜시버(SN65HVD230 등)만 연결
 - `adapter_esp32.c` 가 Arduino/IDF 환경에서 동작
@@ -237,4 +229,4 @@ sudo setcap cap_net_admin+ep ./can_job_test
 
 - SocketCAN (Linux kernel)
 - ESP-IDF TWAI driver
-- MIT License (추후 결정 가능)
+- MIT License
