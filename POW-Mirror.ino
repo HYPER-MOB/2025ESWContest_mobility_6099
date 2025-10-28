@@ -221,10 +221,10 @@ AxisConfig CFG_RIGHT_PITCH = {
     .onHold         = { {PIN_RIGHT_PIN_6, false}, {PIN_RIGHT_PIN_7, false}, {PIN_RIGHT_PIN_8, false} }
 };
 
-AxisRuntime RT_LEFT_YAW         = {CFG_LEFT_YAW,     90, 90, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
-AxisRuntime RT_LEFT_PITCH       = {CFG_LEFT_PITCH,   90, 90, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
-AxisRuntime RT_RIGHT_YAW        = {CFG_RIGHT_YAW,    90, 90, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
-AxisRuntime RT_RIGHT_PITCH      = {CFG_RIGHT_PITCH,  90, 90, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
+AxisRuntime RT_LEFT_YAW         = {CFG_LEFT_YAW,     0, 0, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
+AxisRuntime RT_LEFT_PITCH       = {CFG_LEFT_PITCH,   0, 0, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
+AxisRuntime RT_RIGHT_YAW        = {CFG_RIGHT_YAW,    0, 0, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
+AxisRuntime RT_RIGHT_PITCH      = {CFG_RIGHT_PITCH,  0, 0, 0, 0, 0, 0, false, AxisDir::Hold, AxisDir::Hold, AxisPhase::Idle};
 
 AxisRuntime* AXES[] = { &RT_LEFT_YAW, &RT_LEFT_PITCH, &RT_RIGHT_YAW, &RT_RIGHT_PITCH };
 static const int AXES_N = sizeof(AXES)/sizeof(AXES[0]);
