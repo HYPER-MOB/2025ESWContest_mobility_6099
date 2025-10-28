@@ -103,8 +103,8 @@ AxisConfig CFG_POSITION = {
     .min_val        = 0,
     .max_val        = 100,
     .def_val        = 50,
-    .stroke_toMax_ms      = 6500.0f,
-    .stroke_toMin_ms      = 6500.0f,
+    .stroke_toMax_ms      = 14000.0f,
+    .stroke_toMin_ms      = 14000.0f,
     .onMoveToMin    = { {PIN_POSITION_PLUS, false}, {PIN_POSITION_MINUS, true}  },
     .onMoveToMax    = { {PIN_POSITION_PLUS, true},  {PIN_POSITION_MINUS, false} },
     .onHold         = { {PIN_POSITION_PLUS, false}, {PIN_POSITION_MINUS, false} }
@@ -114,8 +114,8 @@ AxisConfig CFG_ANGLE = {
     .min_val        = 0,
     .max_val        = 180,
     .def_val        = 90,
-    .stroke_toMax_ms      = 6500.0f,
-    .stroke_toMin_ms      = 6500.0f,
+    .stroke_toMax_ms      = 6200.0f,
+    .stroke_toMin_ms      = 6200.0f,
     .onMoveToMin    = { {PIN_ANGLE_PLUS, false}, {PIN_ANGLE_MINUS, true}  },
     .onMoveToMax    = { {PIN_ANGLE_PLUS, true},  {PIN_ANGLE_MINUS, false} },
     .onHold         = { {PIN_ANGLE_PLUS, false}, {PIN_ANGLE_MINUS, false} }
@@ -650,7 +650,8 @@ void fsm_stateNotReadyLoop() {
                     if (g_ackTries >= ACK_MAX_TRIES) {
                         // 예: CAN 재오픈 시도, 또는 잠시 대기 등
                         // can_open 재시도 로직을 넣을 수 있음
-                        g_ackTries = 0; // 계속 시도할 거라면 카운터 리셋
+                        g_ackTries = 0; 
+                        fsm_enterState(State::Ready);
                     }
                 }
             }
