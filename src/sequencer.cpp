@@ -247,7 +247,6 @@ void Sequencer::tick() {
         } else {
             std::printf("[NFC] End\n");
             send_auth_state_(static_cast<uint8_t>(AuthStep::NFC), AuthStateFlag::OK);
-            send_auth_result_(true);
             step_ = AuthStep::BLE;
         }
         break;
@@ -270,7 +269,6 @@ void Sequencer::tick() {
         else{
             std::printf("[BLE] End\n");
             send_auth_state_(static_cast<uint8_t>(AuthStep::BLE), AuthStateFlag::OK);
-            send_auth_result_(true);
             retry_step = 0;
             step_ = AuthStep::CAM;
         }
