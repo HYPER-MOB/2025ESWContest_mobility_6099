@@ -109,34 +109,57 @@ namespace sca {
         const std::vector<std::string>& args,
         const std::optional<std::string>& working_dir)
     {
-        
         const std::string python = "python3";
+
+        // 스크립트 경로: working_dir가 있으면 거기 기반 절대/상대 경로 모두 OK
         std::vector<std::string> all_args;
         std::filesystem::path script = working_dir
-        ? (std::filesystem::path(*working_dir) / script_filename)
-        : std::filesystem::path(script_filename);
+            ? (std::filesystem::path(*working_dir) / script_filename)
+            : std::filesystem::path(script_filename);
+
         all_args.emplace_back(script.string());
         all_args.insert(all_args.end(), args.begin(), args.end());
 
-        pid_t pid = -1;
+        // argv 구성
         std::vector<char*> argv = make_argv(python, all_args);
 
-        posix_spawn_file_actions_t fa;
-        posix_spawn_file_actions_t* pfa = nullptr;
+        // --- 1) working_dir 없는 경우: posix_spawnp 그대로 사용 ---
+        if (!working_dir.has_value() || working_dir->empty()) {
+            pid_t pid = -1;
 
-        posix_spawn_file_actions_init(&fa);
-        if (working_dir.has_value()) {
+            posix_spawn_file_actions_t fa;
+            posix_spawn_file_actions_t* pfa = nullptr;
+            posix_spawn_file_actions_init(&fa);
+            // (필요시 파일 리다이렉트 액션 등을 여기에 추가)
+            int rc = posix_spawnp(&pid, python.c_str(), pfa,
+                /*attrp*/nullptr, argv.data(), environ);
+            posix_spawn_file_actions_destroy(&fa);
 
+            if (rc != 0) {
+                return ProcessHandle{ -1 };
+            }
+            return ProcessHandle{ static_cast<int>(pid) };
         }
 
-        int rc = posix_spawnp(&pid, python.c_str(), pfa,
-            /*attrp*/nullptr, argv.data(), environ);
-        posix_spawn_file_actions_destroy(&fa);
-
-        if (rc != 0) {
-            return ProcessHandle{ -1 };
+        // --- 2) working_dir 있는 경우: fork + chdir + execvp ---
+        {
+            pid_t pid = ::fork();
+            if (pid < 0) {
+                // fork 실패
+                return ProcessHandle{ -1 };
+            }
+            if (pid == 0) {
+                // 자식 프로세스
+                if (::chdir(working_dir->c_str()) != 0) {
+                    _exit(127); // chdir 실패
+                }
+                ::execvp(python.c_str(), argv.data());
+                _exit(127);     // exec 실패 시
+            }
+            // 부모: 자식 PID 반환
+            return ProcessHandle{ static_cast<int>(pid) };
         }
-        return ProcessHandle{ static_cast<int>(pid) };
+
     }
 
     bool try_get_exit(const ProcessHandle& h, int& exit_code)

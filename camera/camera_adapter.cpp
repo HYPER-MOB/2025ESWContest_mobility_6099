@@ -3,25 +3,44 @@
 #include <filesystem>
 #include <utility> 
 #include <cstdint>
+#include <chrono>
+#include <thread>
 
-
+#define CAM_AUTH ""
+#define CAM_RIDE ""
+#define CAM_DATA "user1.txt"
+#define CAM_INPUT "input.txt"
+#define CAM_OUTPUT "output.txt"
 namespace sca {
+	CamConfig cfg; std::filesystem::path PATH_AI;
 
-	CamConfig cfg;
-	bool cam_initial_(eFile type)
+	const char* ai_filename(eFile type) {
+		switch (type) {
+		case eFile::Auth: return CAM_AUTH;
+		case eFile::Drive: return CAM_RIDE;
+		case eFile::Data: return CAM_DATA;
+		case eFile::Input: return CAM_INPUT;
+		case eFile::Output: return CAM_OUTPUT;
+		default:          return CAM_AUTH;
+		}
+	}
+	bool cam_initial_(bool type)
 	{
 		cfg.curStep=eInput::Default;
 		cfg.inputStep=eInput::Default;
 		cfg.result = false;
 
 		PATH_AI = get_ai_path();
-		std::filesystem::path script = PATH_AI / ai_filename(type);
+		std::filesystem::path script = PATH_AI / ai_filename(type?eFile::Auth:eFile::Drive);
 		std::filesystem::path in = PATH_AI / ai_filename(eFile::Input);
 		bool ok = write_text(in.string(), "1", WriteMode::Truncate);
 		if(ok)
-		{	
+		{
 			cfg.python_Handle = run_python(script.string());
-			return cfg.python_Handle.valid();
+			ok = cfg.python_Handle.valid();
+			if (ok) cfg.inputStep = eInput::eI_Wait;
+			else std::printf("[CAM] Program error\n");
+			return ok;
 		}
 		return false;// not write input txt
 	}
@@ -56,67 +75,62 @@ namespace sca {
 		cfg.inputStep = eInput::Terminate;
 		return ok;
 	}
+
 	uint8_t cam_authenticating_(bool* ok) {
-    // 기본값
     if (ok) *ok = false;
 
-    // 아직 종료 안 됨 → 러너가 실행 중이므로 '대기' 상태를 돌려준다.
     int ec = 0;
     if (!try_get_exit(cfg.python_Handle, ec)) {
-        return eStatus::Wait; // ★ 기존 Error → Wait 로 교정
+        return 0;
     }
 
-    // 종료됨 → 파일에서 상태코드 읽기
     const std::filesystem::path out = PATH_AI / ai_filename(eFile::Output);
-    const int val = read_single_char_code(out.string());
+    const char* val = read_single_char_code(out.string());
     if (val < 0) {
-        return eStatus::Error;
+        return 4;
     }
 
-    switch ((val - '0')) {
-    case eOutput::Terminate:
+    switch (val) {
+    case '0'://Terminate
         if (cfg.inputStep == eInput::Terminate) {
             cam_clean_();
             cfg.curStep = eInput::Terminate;
-            if (ok) *ok = cfg.result;
-            return eStatus::Terminate;
+            return 2;
         }
         break;
 
-    case eOutput::Wait:
+    case '1'://Ready
         if (cfg.inputStep == eInput::Wait) {
             cfg.curStep = eInput::Wait;
-            return eStatus::Ready;
+            return 1;
         }
         break;
 
-    case eOutput::Action:
+    case '2'://Action
         if (cfg.inputStep == eInput::Action) {
+			std::printf("[CAM] Action\n");
             cfg.curStep = eInput::Action;
-            return eStatus::Action;
         }
         break;
 
-    case eOutput::True:
+    case '3'://Action
         if (cfg.curStep == eInput::Action) {
-            cfg.result = true;
             if (ok) *ok = true;
-            return eStatus::Result;
+            return 3;
         }
         break;
 
-    case eOutput::False: // ★ enum 이름 통일(대소문자)
+	case '4':
         if (cfg.curStep == eInput::Action) {
-            cfg.result = false;
             if (ok) *ok = false;
-            return eStatus::Result;
+			return 3;
         }
         break;
 
     default:
         break;
     }
-    return eStatus::Wait;
+    return 0;
 }
 
 	bool cam_clean_() {
@@ -128,7 +142,8 @@ namespace sca {
 					cfg.python_Handle = ProcessHandle{}; 
 					return true;
 				}
-				usleep(100000); // 100ms
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
 			}
 			terminate(cfg.python_Handle, 9);
 			int ec = 0; try_get_exit(cfg.python_Handle, ec);

@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <optional>
-
+#include <filesystem>
 
 namespace sca {
     enum class WriteMode { Append, Truncate };

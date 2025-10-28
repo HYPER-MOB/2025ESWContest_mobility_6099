@@ -8,6 +8,13 @@
 #include "camera_adapter.hpp"
 #include <array>
 #include <cstdint>
+
+using sca::cam_initial_;
+using sca::cam_data_setting_;
+using sca::cam_start_;
+using sca::cam_Terminate_;
+using sca::cam_authenticating_;
+
 uint32_t bswap32(uint32_t v) {
     return ((v & 0x000000FFu) << 24) |
         ((v & 0x0000FF00u) << 8) |
@@ -126,31 +133,27 @@ bool Sequencer::perform_ble_() {
 
     return matched;
 }
-bool Sequencer::setting_cam_() {
-    bool ok = cam_initial_();
+bool Sequencer::setting_cam_(bool type) {
+    cam_data_cnt = 0;
+    bool ok = cam_initial_(type);
     if (!ok) return false;
-    cam_data_setting_(cam_data_.data(), cam_data_cnt);
+    if(type)cam_data_setting_(cam_data_.data(), cam_data_cnt);
     return true;
 }
 
 bool Sequencer::perform_cam_(uint8_t* result) {
     bool ok_flag = false;
-    result  = cam_authenticating_(&ok_flag);
+    uint8_t st  = cam_authenticating_(&ok_flag);
+    if (result) *result = st;
     return ok_flag;
 }
 void Sequencer::on_can_rx(const CanFrame& f) {
-    std::printf("[CAN] id: %d dlc:%d data:",f.id,f.dlc);
-    for(int i=0;i<f.dlc;i++)
-    {
-        std::printf("%02X",f.data[i]);
-    }
-    std::printf("\n");
     switch (f.id) {
-    case BCAN_ID_DCU_SCA_USER_FACE_REQ: {
+    case PCAN_ID_DCU_SCA_USER_FACE_REQ: {
         start_sequence_();
         break;
     }
-    case BCAN_ID_TCU_SCA_USER_INFO_NFC: {
+    case PCAN_ID_TCU_SCA_USER_INFO_NFC: {
         if (f.dlc >= 4) {
             for(int i=0;i<f.dlc;i++)
             {
@@ -163,9 +166,9 @@ void Sequencer::on_can_rx(const CanFrame& f) {
         }
         break;
     }
-    case BCAN_ID_TCU_SCA_USER_INFO_BLE_SESS: {
+    case PCAN_ID_TCU_SCA_USER_INFO_BLE_SESS: {
         if (f.dlc >= 4) {
-            std::memcpy(ble_sess_.data(), f.data+sizeof(uint8_t)*2, 6);
+            std::memcpy(ble_sess_.data(), f.data+ sizeof(uint8_t) * 2, 6);
             have_ble_sess_ = true;
             ack_user_info_(/*index=*/2, /*state=*/0);
         } else {
@@ -173,13 +176,16 @@ void Sequencer::on_can_rx(const CanFrame& f) {
         }
         break;
     }
-    case BCAN_ID_TCU_SCA_USER_INFO: {
+    case PCAN_ID_TCU_SCA_USER_INFO: {
         if (f.dlc == 8) {
         uint32_t v;
         std::memcpy(&v, f.data, 4);
 
-            if (v & 0x0000FFFF == 0x0000FFFF) {
+            if (v == 0xFFFFFFFF) {
                 have_collected_cam_ = true;
+                cam_data_[cam_data_cnt].first = v;
+                cam_data_[cam_data_cnt].second = 0;
+                cam_data_cnt++;
             ack_user_info_(/*index=*/3, /*state=*/0);
                 break;
             }
@@ -193,12 +199,16 @@ void Sequencer::on_can_rx(const CanFrame& f) {
                 cam_data_[cam_data_cnt].second = data;
                 cam_data_cnt++;
             }
-            ack_user_info_(/*index=*/2, /*state=*/0);
+            ack_user_info_(/*index=*/3, /*state=*/0);
         }
         else {
-            ack_user_info_(/*index=*/2, /*state=*/1);
+            ack_user_info_(/*index=*/3, /*state=*/1);
         }
         break;
+    }
+    case PCAN_ID_DCU_SCA_DRIVE_STATUS: {
+        std::printf("[Drive] :%d",f.data[0]);
+        driving = f.data[0] > 0;
     }
     default:
         break;
@@ -247,24 +257,24 @@ void Sequencer::tick() {
         if (!ok) {
             std::printf("[BLE] Fail\n");
             send_auth_state_(static_cast<uint8_t>(AuthStep::BLE), AuthStateFlag::FAIL);
-            send_auth_result_(FALSE);
+            send_auth_result_(false);
             reset_to_idle_();
         }
         else{
             std::printf("[BLE] End\n");
             send_auth_state_(static_cast<uint8_t>(AuthStep::BLE), AuthStateFlag::OK);
-            send_auth_result_(TRUE);
+            send_auth_result_(true);
             retry_step = 0;
-            step_ = AuthStep::CAM_Setting;
+            step_ = AuthStep::CAM;
         }
         break;
     }
-     case AuthStep::CAM_Setting: {
+     case AuthStep::CAM: {
          if (have_collected_cam_) {
-             std::printf("[CAM] Setting\n");
-             ok = setting_cam_();
+             std::printf("[CAM] Init\n");
+             ok = setting_cam_(true);
              if(ok)
-                step_ = AuthStep::CAM;
+                step_ = AuthStep::CAM_Wait;
             else if(retry_step<3)
                 retry_step++;
             else{
@@ -277,22 +287,28 @@ void Sequencer::tick() {
          }
          break;
      }
-     case AuthStep::CAM: {
+     case AuthStep::CAM_Wait: {
             uint8_t result;
             ok = perform_cam_(&result);
             
             switch (result)
             {
-            case eCamStatus::Ready:
+            case 1/*Ready*/:
+                std::printf("[CAM] Start\n");
                 cam_start_();
                 break;
-            case eCamStatus::Terminate:
-                step_ = AuthStep::CAM_Wait;
+            case 2/*Terminate*/:
+                std::printf("[CAM] End\n");
+                send_auth_result_(false);
+                reset_to_idle_();
                 break;
-            case eCamStatus::Result:
+            case 3/*Result*/:
+                std::printf("[CAM] Result : %d\n",ok);
+                send_auth_state_(static_cast<uint8_t>(AuthStep::CAM), ok?AuthStateFlag::OK:AuthStateFlag::FAIL);
+                send_auth_result_(ok);
                 cam_Terminate_();
                 break;
-            case eCamStatus::Error:
+            case 4/*Error*/:
                 cam_Terminate_();
                 std::printf("[CAM] Fail\n");
                 send_auth_state_(static_cast<uint8_t>(AuthStep::CAM), AuthStateFlag::FAIL);
@@ -306,29 +322,53 @@ void Sequencer::tick() {
 
          }
          break;
-     }
-     case AuthStep::CAM_Wait: {
-        if(0)
-        {
-        if (!ok) {
-             std::printf("[CAM] Fail\n");
-             send_auth_state_(static_cast<uint8_t>(AuthStep::CAM), AuthStateFlag::FAIL);
-         }
-         else {
-             std::printf("[CAM] End\n");
-             send_auth_state_(static_cast<uint8_t>(AuthStep::CAM), AuthStateFlag::OK);
-         }
-         send_auth_result_(ok);
-         reset_to_idle_();
-        }
-         
-         break;
-     }
-     case AuthStep::Riding:
+     case AuthStep::Drive:
      {
-            //riding seq
+         std::printf("[Drive] Init\n");
+         ok = setting_cam_(false);
+        if (ok)
+            step_ = AuthStep::Driving;
+        else if (retry_step < 3)
+            retry_step++;
+        else {
+            std::printf("[Drive] Program Issue\n");
+            reset_to_idle_();
+        }
+         break;
+     }break;
+     case AuthStep::Driving:
+     {
+         uint8_t result;
+         ok = perform_cam_(&result);
+
+         if (!driving) {
+             cam_Terminate_();
+             step_ = AuthStep::Idle;
+         }
+         switch (result)
+         {
+         case 1/*Ready*/:
+             std::printf("[Drive] Start\n");
+             cam_start_();
+             break;
+         case 3/*Result*/:
+             std::printf("[Drive] Catch\n");
+             send_sleep_check();
+             break;
+         case 4/*Error*/:
+             cam_Terminate_();
+             std::printf("[Drive] Program Issue\n");
+             step_ = AuthStep::Drive;
+             break;
+
+         default:
+             break;
+         }
      }break;
     case AuthStep::Idle:
+        if (driving)
+            step_ = AuthStep::Drive;
+        break;
     case AuthStep::Done:
     default:
         break;
@@ -336,29 +376,34 @@ void Sequencer::tick() {
 }
 
 void Sequencer::send_auth_state_(uint8_t step, AuthStateFlag flg) {
-    CanFrame f{}; f.id = BCAN_ID_SCA_DCU_AUTH_STATE; f.dlc = 2;
+    CanFrame f{}; f.id = PCAN_ID_SCA_DCU_AUTH_STATE; f.dlc = 2;
     f.data[0] = step;
     f.data[1] = static_cast<uint8_t>(flg);
     can_send(cfg_.can_channel.c_str(), f, 0);
 }
 
 void Sequencer::send_auth_result_(bool ok) {
-    CanFrame f{}; f.id = BCAN_ID_SCA_DCU_AUTH_RESULT; f.dlc = 8;
+    CanFrame f{}; f.id = PCAN_ID_SCA_DCU_AUTH_RESULT; f.dlc = 8;
     memset(f.data, 0, sizeof(f.data));
     f.data[0] = ok ? 0x00 : 0x01;
     can_send(cfg_.can_channel.c_str(), f, 0);
 }
 
+void Sequencer::send_sleep_check() {
+    CanFrame f{}; f.id = PCAN_ID_SCA_DCU_DRIVER_EVENT; f.dlc = 1;
+    f.data[0] = 0;
+    can_send(cfg_.can_channel.c_str(), f, 0);
+}
+
 void Sequencer::ack_user_info_(uint8_t index, uint8_t state) {
     
-    std::printf("[ACK]\n");
-    CanFrame f{}; f.id = BCAN_ID_SCA_TCU_USER_INFO_ACK; f.dlc = 2;
+    CanFrame f{}; f.id = PCAN_ID_SCA_TCU_USER_INFO_ACK; f.dlc = 2;
     f.data[0] = index; // 1:NFC, 2:BLE
     f.data[1] = state; // 0 OK, 1 
     can_send(cfg_.can_channel.c_str(), f, 0);
 }
 
 void Sequencer::request_user_info_to_tcu_() {
-    CanFrame f{}; f.id = BCAN_ID_SCA_TCU_USER_INFO_REQ; f.dlc = 1; f.data[0] = 1;
+    CanFrame f{}; f.id = PCAN_ID_SCA_TCU_USER_INFO_REQ; f.dlc = 1; f.data[0] = 1;
     can_send(cfg_.can_channel.c_str(), f, 0);
 }
