@@ -102,7 +102,7 @@ class CameraFaceMesh:
             ok, frame_bgr = self.cap.read()
             if not ok or frame_bgr is None:
                 if show:
-                    cv2.imshow("FaceAuth", np.zeros((100, 300, 3), dtype=np.uint8))
+                    cv2.imshow("FaceAuth", np.zeros((1920, 720, 3), dtype=np.uint8))
                     cv2.waitKey(1)
                 time.sleep(sleep_s)
                 continue
