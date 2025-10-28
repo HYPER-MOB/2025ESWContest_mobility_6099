@@ -6,8 +6,8 @@
 #include <chrono>
 #include <thread>
 
-#define CAM_AUTH ""
-#define CAM_RIDE ""
+#define CAM_AUTH "faceauth.py"
+#define CAM_RIDE "drowsiness.py"
 #define CAM_DATA "user1.txt"
 #define CAM_INPUT "input.txt"
 #define CAM_OUTPUT "output.txt"
@@ -61,10 +61,10 @@ namespace sca {
 	}
 	bool cam_start_()
 	{
-		if(cfg.curStep!=eInput::Wait)return false;
+		if(cfg.curStep!=eInput::eI_Wait)return false;
 		std::filesystem::path in = PATH_AI / ai_filename(eFile::Input);
 		bool ok = write_text(in.string(), "2", WriteMode::Truncate);
-		if(ok)cfg.inputStep = eInput::Action;
+		if(ok)cfg.inputStep = eInput::eI_Action;
 		return ok;
 	}
 
@@ -72,7 +72,7 @@ namespace sca {
 	{
 		std::filesystem::path in = PATH_AI / ai_filename(eFile::Input);
 		bool ok = write_text(in.string(), "0", WriteMode::Truncate);
-		cfg.inputStep = eInput::Terminate;
+		cfg.inputStep = eInput::eI_Terminate;
 		return ok;
 	}
 
@@ -92,36 +92,36 @@ namespace sca {
 
     switch (val) {
     case '0'://Terminate
-        if (cfg.inputStep == eInput::Terminate) {
+        if (cfg.inputStep == eInput::eI_Terminate) {
             cam_clean_();
-            cfg.curStep = eInput::Terminate;
+            cfg.curStep = eInput::eI_Terminate;
             return 2;
         }
         break;
 
     case '1'://Ready
-        if (cfg.inputStep == eInput::Wait) {
-            cfg.curStep = eInput::Wait;
+        if (cfg.inputStep == eInput::eI_Wait) {
+            cfg.curStep = eInput::eI_Wait;
             return 1;
         }
         break;
 
     case '2'://Action
-        if (cfg.inputStep == eInput::Action) {
+        if (cfg.inputStep == eInput::eI_Action) {
 			std::printf("[CAM] Action\n");
-            cfg.curStep = eInput::Action;
+            cfg.curStep = eInput::eI_Action;
         }
         break;
 
     case '3'://Action
-        if (cfg.curStep == eInput::Action) {
+        if (cfg.curStep == eInput::eI_Action) {
             if (ok) *ok = true;
             return 3;
         }
         break;
 
 	case '4':
-        if (cfg.curStep == eInput::Action) {
+        if (cfg.curStep == eInput::eI_Action) {
             if (ok) *ok = false;
 			return 3;
         }
