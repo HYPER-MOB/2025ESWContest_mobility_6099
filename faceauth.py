@@ -5,17 +5,9 @@ import time
 import math
 import threading
 from typing import Dict, List, Tuple
+import cv2
+import mediapipe as mp
 import numpy as np
-
-try:
-    import cv2
-except Exception as e:
-    cv2 = None
-
-try:
-    import mediapipe as mp
-except Exception as e:
-    mp = None
 
 def log(msg: str) -> None:
     if os.getenv("FACE_AUTH_LOG"):
@@ -105,14 +97,40 @@ class CameraFaceMesh:
         except Exception:
             pass
 
-    def capture_landmarks(self, attempts: int = 60, sleep_s: float = 0.05) -> List[Tuple[float, float, float]]:
+    def capture_landmarks(self, attempts: int = 60, sleep_s: float = 0.05, show: bool = False) -> List[Tuple[float, float, float]]:
         for _ in range(attempts):
             ok, frame_bgr = self.cap.read()
             if not ok or frame_bgr is None:
+                if show:
+                    cv2.imshow("FaceAuth", np.zeros((100, 300, 3), dtype=np.uint8))
+                    cv2.waitKey(1)
                 time.sleep(sleep_s)
                 continue
             rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
             results = self._face_mesh.process(rgb)
+            if show:
+                overlay = frame_bgr.copy()
+                if results.multi_face_landmarks:
+                    face_landmarks = results.multi_face_landmarks[0]
+                    mp.solutions.drawing_utils.draw_landmarks(
+                        image=overlay,
+                        landmark_list=face_landmarks,
+                        connections=self._mp_face_mesh.FACEMESH_TESSELATION,
+                        landmark_drawing_spec=None,
+                        connection_drawing_spec=mp.solutions.drawing_styles.get_default_face_mesh_tesselation_style(),
+                    )
+                    mp.solutions.drawing_utils.draw_landmarks(
+                        image=overlay,
+                        landmark_list=face_landmarks,
+                        connections=self._mp_face_mesh.FACEMESH_CONTOURS,
+                        landmark_drawing_spec=None,
+                        connection_drawing_spec=mp.solutions.drawing_styles.get_default_face_mesh_contours_style(),
+                    )
+                cv2.imshow("FaceAuth", overlay)
+                key = cv2.waitKey(1)
+                if key in (27, ord('q')):
+                    break
+
             if results.multi_face_landmarks:
                 lm = results.multi_face_landmarks[0].landmark
                 return [(p.x, p.y, p.z) for p in lm]
@@ -155,22 +173,27 @@ def build_vector_from_landmarks(indices: List[Tuple[int, int]], landmarks: List[
         v = np.where(np.isfinite(v), v, fill)
     return v
 
-
 def match_profile(camera: CameraFaceMesh, indices: List[Tuple[int, int]], stored_vec: np.ndarray, max_attempts: int) -> bool:
     attempts = max(1, int(max_attempts))
-    for i in range(attempts):
-        lms = camera.capture_landmarks(attempts=1)
-        if not lms:
-            continue
-        measured = build_vector_from_landmarks(indices, lms)
-        s_norm = zscore(stored_vec)
-        m_norm = zscore(measured)
-        sim = cosine_similarity(s_norm, m_norm)
-        log(f"attempt {i+1}: cosine={sim:.6f}")
-        thresh = float(os.getenv("FACE_AUTH_THRESHOLD", "0.97"))
-        if sim >= thresh:
-            return True
-    return False
+    try:
+        for i in range(attempts):
+            lms = camera.capture_landmarks(attempts=1)
+            if not lms:
+                continue
+            measured = build_vector_from_landmarks(indices, lms)
+            s_norm = zscore(stored_vec)
+            m_norm = zscore(measured)
+            sim = cosine_similarity(s_norm, m_norm)
+            log(f"attempt {i+1}: cosine={sim:.6f}")
+            thresh = float(os.getenv("FACE_AUTH_THRESHOLD", "0.97"))
+            if sim >= thresh:
+                return True
+        return False
+    finally:
+        try:
+            cv2.destroyWindow("FaceAuth")
+        except Exception:
+            pass
 
 def main():
     in_path = os.getenv("FACE_AUTH_INPUT_FILE", "input.txt")
@@ -243,8 +266,8 @@ def main():
                     camera.close()
                 print("Program terminated")
                 break
-
             last_in = cur
+
     except Exception:
         pass
 
