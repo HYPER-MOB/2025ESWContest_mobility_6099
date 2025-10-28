@@ -179,8 +179,8 @@ void MainWindow::showIntroSequence()
             m_introLabel->deleteLater();
             m_introLabel = nullptr;
         }
-        fadeToWidget(m_main, 320);
-        QMetaObject::invokeMethod(m_main, "begin", Qt::QueuedConnection);
+        fadeToWidget(m_auth, 320);
+        QMetaObject::invokeMethod(m_auth, "begin", Qt::QueuedConnection);
     });
 
     seq->start(QAbstractAnimation::DeleteWhenStopped);
