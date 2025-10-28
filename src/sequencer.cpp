@@ -236,7 +236,7 @@ void Sequencer::tick() {
         if (!ok) {
             std::printf("[NFC] Fail\n");
             send_auth_state_(static_cast<uint8_t>(AuthStep::NFC), AuthStateFlag::FAIL);
-            send_auth_result_(FALSE);
+            send_auth_result_(false);
             reset_to_idle_();
         } else {
             std::printf("[NFC] End\n");

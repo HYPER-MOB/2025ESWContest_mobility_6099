@@ -424,8 +424,8 @@ namespace sca {
         call_set(adapter, "org.bluez.Adapter1", "Alias", g_variant_new_string(cfg_.local_name.c_str()));
 
         if (!export_objects()) return false;
+        if (!register_app(adapter)) { unexport_objects(); return false; }
         if (!register_adv(adapter)) { unregister_app(adapter); unexport_objects(); return false; }
-        if (!register_adv(adapter)) { unexport_objects(); return false; }
 
         std::cout << "[BLE] Advertising service " << service_uuid_
             << " name=" << cfg_.local_name
