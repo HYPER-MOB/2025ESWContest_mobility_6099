@@ -2,21 +2,18 @@ import os
 import sys
 import re
 import time
-import math
-import threading
-from typing import Dict, List, Tuple
+
 import cv2
 import mediapipe as mp
 import numpy as np
 
-def log(msg: str) -> None:
-    if os.getenv("FACE_AUTH_LOG"):
-        sys.stderr.write(msg + "\n")
-        sys.stderr.flush()
+def log(msg):
+    sys.stderr.write(msg + "\n")
+    sys.stderr.flush()
 
-def parse_profile(txt_path: str) -> Tuple[List[Tuple[int, int]], np.ndarray]:
-    idx_list: List[Tuple[int, int]] = []
-    vals: List[float] = []
+def parse_profile(txt_path):
+    idx_list = []
+    vals = []
 
     if not os.path.exists(txt_path):
         raise FileNotFoundError(f"Profile not found: {txt_path}")
@@ -54,97 +51,64 @@ def parse_profile(txt_path: str) -> Tuple[List[Tuple[int, int]], np.ndarray]:
 
 class CameraFaceMesh:
     def __init__(self):
-        if cv2 is None:
-            raise RuntimeError("OpenCV not available. pip install opencv-python")
-        if mp is None:
-            raise RuntimeError("mediapipe not available. pip install mediapipe")
-
         cam_index = int(os.getenv("FACE_AUTH_CAM_INDEX", "0"))
         self.cap = cv2.VideoCapture(cam_index)
 
-        w = int(os.getenv("FACE_AUTH_CAM_WIDTH", "1280"))
-        h = int(os.getenv("FACE_AUTH_CAM_HEIGHT", "720"))
-        try:
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-            self.cap.set(cv2.CAP_PROP_FPS, int(os.getenv("FACE_AUTH_CAM_FPS", "30")))
-        except Exception:
-            pass
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(os.getenv("FACE_AUTH_CAM_WIDTH", "1280")))
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(os.getenv("FACE_AUTH_CAM_HEIGHT", "720")))
+        self.cap.set(cv2.CAP_PROP_FPS, int(os.getenv("FACE_AUTH_CAM_FPS", "30")))
 
         if not self.cap.isOpened():
             raise RuntimeError("Failed to open USB camera. Check device index or permissions.")
 
         time.sleep(0.3)
-
         self._mp_face_mesh = mp.solutions.face_mesh
+
+        refine = os.getenv("FACE_AUTH_REFINE_LANDMARKS", "1") not in ("0", "false", "False")
+        det_conf = float(os.getenv("FACE_AUTH_DET_CONF", "0.7"))
+        trk_conf = float(os.getenv("FACE_AUTH_TRK_CONF", "0.7"))
+        max_faces = int(os.getenv("FACE_AUTH_MAX_FACES", "1"))
+
         self._face_mesh = self._mp_face_mesh.FaceMesh(
             static_image_mode=False,
-            refine_landmarks=False,
-            max_num_faces=1,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
+            refine_landmarks=refine,
+            max_num_faces=max_faces,
+            min_detection_confidence=det_conf,
+            min_tracking_confidence=trk_conf,
         )
 
     def close(self):
         try:
-            if hasattr(self, "_face_mesh"):
-                self._face_mesh.close()
+            self._face_mesh.close()
         except Exception:
             pass
         try:
-            if self.cap:
-                self.cap.release()
+            self.cap.release()
         except Exception:
             pass
 
-    def capture_landmarks(self, attempts: int = 60, sleep_s: float = 0.05, show: bool = False) -> List[Tuple[float, float, float]]:
-        for _ in range(attempts):
+    def capture_landmarks(self, attempts=60, sleep_s=0.05):
+        for _ in range(max(1, int(attempts))):
             ok, frame_bgr = self.cap.read()
             if not ok or frame_bgr is None:
-                if show:
-                    cv2.imshow("FaceAuth", np.zeros((1920, 720, 3), dtype=np.uint8))
-                    cv2.waitKey(1)
                 time.sleep(sleep_s)
                 continue
             rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
             results = self._face_mesh.process(rgb)
-            if show:
-                overlay = frame_bgr.copy()
-                if results.multi_face_landmarks:
-                    face_landmarks = results.multi_face_landmarks[0]
-                    mp.solutions.drawing_utils.draw_landmarks(
-                        image=overlay,
-                        landmark_list=face_landmarks,
-                        connections=self._mp_face_mesh.FACEMESH_TESSELATION,
-                        landmark_drawing_spec=None,
-                        connection_drawing_spec=mp.solutions.drawing_styles.get_default_face_mesh_tesselation_style(),
-                    )
-                    mp.solutions.drawing_utils.draw_landmarks(
-                        image=overlay,
-                        landmark_list=face_landmarks,
-                        connections=self._mp_face_mesh.FACEMESH_CONTOURS,
-                        landmark_drawing_spec=None,
-                        connection_drawing_spec=mp.solutions.drawing_styles.get_default_face_mesh_contours_style(),
-                    )
-                cv2.imshow("FaceAuth", overlay)
-                key = cv2.waitKey(1)
-                if key in (27, ord('q')):
-                    break
-
             if results.multi_face_landmarks:
                 lm = results.multi_face_landmarks[0].landmark
                 return [(p.x, p.y, p.z) for p in lm]
             time.sleep(sleep_s)
         return []
 
-def zscore(v: np.ndarray) -> np.ndarray:
+def zscore(v):
     m = float(v.mean())
     s = float(v.std())
     if s < 1e-8:
         return v * 0.0
     return (v - m) / s
 
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+def cosine_similarity(a, b):
     if a.size == 0 or b.size == 0:
         return -1.0
     na = float(np.linalg.norm(a))
@@ -153,19 +117,14 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
         return -1.0
     return float(np.dot(a, b) / (na * nb))
 
-def build_vector_from_landmarks(indices: List[Tuple[int, int]], landmarks: List[Tuple[float, float, float]]) -> np.ndarray:
+def build_vector_from_landmarks(indices, landmarks):
     out = []
     for lm_id, coord_id in indices:
         if lm_id >= len(landmarks):
             out.append(np.nan)
             continue
         x, y, z = landmarks[lm_id]
-        if coord_id == 0:
-            out.append(x)
-        elif coord_id == 1:
-            out.append(y)
-        else:
-            out.append(z)
+        out.append(x if coord_id == 0 else (y if coord_id == 1 else z))
     v = np.asarray(out, dtype=np.float32)
     if np.isnan(v).any():
         finite = v[np.isfinite(v)]
@@ -173,27 +132,21 @@ def build_vector_from_landmarks(indices: List[Tuple[int, int]], landmarks: List[
         v = np.where(np.isfinite(v), v, fill)
     return v
 
-def match_profile(camera: CameraFaceMesh, indices: List[Tuple[int, int]], stored_vec: np.ndarray, max_attempts: int) -> bool:
+def match_profile(camera, indices, stored_vec, max_attempts):
     attempts = max(1, int(max_attempts))
-    try:
-        for i in range(attempts):
-            lms = camera.capture_landmarks(attempts=1)
-            if not lms:
-                continue
-            measured = build_vector_from_landmarks(indices, lms)
-            s_norm = zscore(stored_vec)
-            m_norm = zscore(measured)
-            sim = cosine_similarity(s_norm, m_norm)
-            log(f"attempt {i+1}: cosine={sim:.6f}")
-            thresh = float(os.getenv("FACE_AUTH_THRESHOLD", "0.97"))
-            if sim >= thresh:
-                return True
-        return False
-    finally:
-        try:
-            cv2.destroyWindow("FaceAuth")
-        except Exception:
-            pass
+    s_norm = zscore(stored_vec)
+    thresh = float(os.getenv("FACE_AUTH_THRESHOLD", "0.97"))
+    for i in range(attempts):
+        lms = camera.capture_landmarks(attempts=1)
+        if not lms:
+            continue
+        measured = build_vector_from_landmarks(indices, lms)
+        m_norm = zscore(measured)
+        sim = cosine_similarity(s_norm, m_norm)
+        log(f"attempt {i+1}: cosine={sim:.6f}")
+        if sim >= thresh:
+            return True
+    return False
 
 def main():
     in_path = os.getenv("FACE_AUTH_INPUT_FILE", "input.txt")
@@ -208,7 +161,7 @@ def main():
         log(f"Camera/MediaPipe init error: {e}")
         camera = None
 
-    def read_int(path: str):
+    def read_int(path):
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 txt = f.read().strip()
@@ -219,7 +172,7 @@ def main():
         except Exception:
             return None
 
-    def write_int(path: str, val: int):
+    def write_int(path, val):
         try:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(str(val))
@@ -266,8 +219,8 @@ def main():
                     camera.close()
                 print("Program terminated")
                 break
-            last_in = cur
 
+            last_in = cur
     except Exception:
         pass
 
