@@ -513,12 +513,12 @@ if (fr->id == ID_SCA_DCU_AUTH_STATE && fr->dlc >= 2) {
     if (fr->id == ID_TCU_DCU_USER_PROFILE_MIRROR && fr->dlc >= 6) {
         qInfo() << "[CAN0 RX] PROFILE_MIRROR id=0x" << QString::number(fr->id,16).toUpper()
                 << "dlc=" << fr->dlc << "data=[" << bytesToHex(fr->data, fr->dlc) << "]";
-        m_sideMirrorLeftYaw    = decAngle180_toSigned(fr->data[0], 90);
-        m_sideMirrorLeftPitch  = decAngle180_toSigned(fr->data[1], 90);
-        m_sideMirrorRightYaw   = decAngle180_toSigned(fr->data[2], 90);
-        m_sideMirrorRightPitch = decAngle180_toSigned(fr->data[3], 90);
-        m_roomMirrorYaw        = decAngle180_toSigned(fr->data[4], 90);
-        m_roomMirrorPitch      = decAngle180_toSigned(fr->data[5], 90);
+		m_sideMirrorLeftYaw    = clampInt(fr->data[0], 0, 180);
+		m_sideMirrorLeftPitch  = clampInt(fr->data[1], 0, 180);
+		m_sideMirrorRightYaw   = clampInt(fr->data[2], 0, 180);
+		m_sideMirrorRightPitch = clampInt(fr->data[3], 0, 180);
+		m_roomMirrorYaw        = clampInt(fr->data[4], 0, 180);
+		m_roomMirrorPitch      = clampInt(fr->data[5], 0, 180);	
         g_profMirrorOK = true;
         if (hasClients() && g_profSeatOK && g_profMirrorOK && g_profWheelOK)
             sendToAll([](IpcConnection* c){ sendDataResult(c, 0, g_lastDataReqId); });
@@ -698,12 +698,12 @@ int main(int argc, char** argv) {
         if (p.contains("seatRearHeight"))  { m_seatRearHeight   = clampInt(p.value("seatRearHeight").toInt(), 0, 100); seatChanged = true; }
 
         // Mirrors
-        if (p.contains("sideMirrorLeftYaw"))    { m_sideMirrorLeftYaw    = clampInt(p.value("sideMirrorLeftYaw").toInt(), -45, 45); mirrorChanged = true; }
-        if (p.contains("sideMirrorLeftPitch"))  { m_sideMirrorLeftPitch  = clampInt(p.value("sideMirrorLeftPitch").toInt(), -45, 45); mirrorChanged = true; }
-        if (p.contains("sideMirrorRightYaw"))   { m_sideMirrorRightYaw   = clampInt(p.value("sideMirrorRightYaw").toInt(), -45, 45); mirrorChanged = true; }
-        if (p.contains("sideMirrorRightPitch")) { m_sideMirrorRightPitch = clampInt(p.value("sideMirrorRightPitch").toInt(), -45, 45); mirrorChanged = true; }
-        if (p.contains("roomMirrorYaw"))        { m_roomMirrorYaw        = clampInt(p.value("roomMirrorYaw").toInt(), -45, 45); mirrorChanged = true; }
-        if (p.contains("roomMirrorPitch"))      { m_roomMirrorPitch      = clampInt(p.value("roomMirrorPitch").toInt(), -45, 45); mirrorChanged = true; }
+        if (p.contains("sideMirrorLeftYaw"))    { m_sideMirrorLeftYaw    = clampInt(p.value("sideMirrorLeftYaw").toInt(), 0, 180); mirrorChanged = true; }
+        if (p.contains("sideMirrorLeftPitch"))  { m_sideMirrorLeftPitch  = clampInt(p.value("sideMirrorLeftPitch").toInt(), 0, 180); mirrorChanged = true; }
+        if (p.contains("sideMirrorRightYaw"))   { m_sideMirrorRightYaw   = clampInt(p.value("sideMirrorRightYaw").toInt(), 0, 180); mirrorChanged = true; }
+        if (p.contains("sideMirrorRightPitch")) { m_sideMirrorRightPitch = clampInt(p.value("sideMirrorRightPitch").toInt(), 0, 180); mirrorChanged = true; }
+        if (p.contains("roomMirrorYaw"))        { m_roomMirrorYaw        = clampInt(p.value("roomMirrorYaw").toInt(), 0, 180); mirrorChanged = true; }
+        if (p.contains("roomMirrorPitch"))      { m_roomMirrorPitch      = clampInt(p.value("roomMirrorPitch").toInt(), 0, 180); mirrorChanged = true; }
 
         // Wheel
         if (p.contains("handlePosition"))  { m_handlePosition = clampInt(p.value("handlePosition").toInt(), 0, 100); wheelChanged = true; }
@@ -731,12 +731,12 @@ int main(int argc, char** argv) {
         if (p.contains("seatRearHeight"))  { m_seatRearHeight   = clampInt(p.value("seatRearHeight").toInt(), 0, 100); seatChanged = true; }
 
         // Mirrors
-        if (p.contains("sideMirrorLeftYaw"))    { m_sideMirrorLeftYaw    = clampInt(p.value("sideMirrorLeftYaw").toInt(), -45, 45); mirrorChanged = true; }
-        if (p.contains("sideMirrorLeftPitch"))  { m_sideMirrorLeftPitch  = clampInt(p.value("sideMirrorLeftPitch").toInt(), -45, 45); mirrorChanged = true; }
-        if (p.contains("sideMirrorRightYaw"))   { m_sideMirrorRightYaw   = clampInt(p.value("sideMirrorRightYaw").toInt(), -45, 45); mirrorChanged = true; }
-        if (p.contains("sideMirrorRightPitch")) { m_sideMirrorRightPitch = clampInt(p.value("sideMirrorRightPitch").toInt(), -45, 45); mirrorChanged = true; }
-        if (p.contains("roomMirrorYaw"))        { m_roomMirrorYaw        = clampInt(p.value("roomMirrorYaw").toInt(), -45, 45); mirrorChanged = true; }
-        if (p.contains("roomMirrorPitch"))      { m_roomMirrorPitch      = clampInt(p.value("roomMirrorPitch").toInt(), -45, 45); mirrorChanged = true; }
+        if (p.contains("sideMirrorLeftYaw"))    { m_sideMirrorLeftYaw    = clampInt(p.value("sideMirrorLeftYaw").toInt(), 0, 180); mirrorChanged = true; }
+        if (p.contains("sideMirrorLeftPitch"))  { m_sideMirrorLeftPitch  = clampInt(p.value("sideMirrorLeftPitch").toInt(), 0, 180); mirrorChanged = true; }
+        if (p.contains("sideMirrorRightYaw"))   { m_sideMirrorRightYaw   = clampInt(p.value("sideMirrorRightYaw").toInt(), 0, 180); mirrorChanged = true; }
+        if (p.contains("sideMirrorRightPitch")) { m_sideMirrorRightPitch = clampInt(p.value("sideMirrorRightPitch").toInt(), 0, 180); mirrorChanged = true; }
+        if (p.contains("roomMirrorYaw"))        { m_roomMirrorYaw        = clampInt(p.value("roomMirrorYaw").toInt(), 0, 180); mirrorChanged = true; }
+        if (p.contains("roomMirrorPitch"))      { m_roomMirrorPitch      = clampInt(p.value("roomMirrorPitch").toInt(), 0, 180); mirrorChanged = true; }
 
         // Wheel
         if (p.contains("handlePosition"))  { m_handlePosition = clampInt(p.value("handlePosition").toInt(), 0, 100); wheelChanged = true; }
