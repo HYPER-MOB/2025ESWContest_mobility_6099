@@ -9,7 +9,15 @@ namespace sca {
     BlePeripheral* BlePeripheral::s_self = nullptr;
 
     static const char* ACCESS_CHAR_UUID = "c0de0001-0000-1000-8000-000000000001";
-
+    static GVariant* make_empty_ao() {
+        GVariantBuilder b;
+        g_variant_builder_init(&b, G_VARIANT_TYPE("ao"));
+        return g_variant_builder_end(&b);
+    }
+    static GVariant* make_empty_as() {
+        // "as"는 문자열 배열. 아래가 빈 배열
+        return g_variant_new_strv(nullptr, 0);
+    }
     const char* BlePeripheral::SERVICE_IF_XML = R"XML(
 <node>
   <interface name="org.bluez.GattService1">
@@ -143,7 +151,7 @@ namespace sca {
                 GVariantBuilder props; g_variant_builder_init(&props, G_VARIANT_TYPE("a{sv}"));
                 g_variant_builder_add(&props, "{sv}", "UUID", g_variant_new_string(self->service_uuid_.c_str()));
                 g_variant_builder_add(&props, "{sv}", "Primary", g_variant_new_boolean(TRUE));
-                g_variant_builder_add(&props, "{sv}", "Includes", g_variant_new("ao", NULL));
+                g_variant_builder_add(&props, "{sv}", "Includes", make_empty_ao());
                 g_variant_builder_add(&ifmap, "{s@a{sv}}", "org.bluez.GattService1", g_variant_builder_end(&props));
                 g_variant_builder_add(&root, "{o@a{sa{sv}}}", self->SERVICE_PATH, g_variant_builder_end(&ifmap));
             }
@@ -156,7 +164,7 @@ namespace sca {
                 g_variant_builder_add(&props, "{sv}", "Service", g_variant_new_object_path(self->SERVICE_PATH));
                 const char* flags_arr[] = { "write", "write-without-response", nullptr };
                 g_variant_builder_add(&props, "{sv}", "Flags", g_variant_new_strv(flags_arr, -1));
-                g_variant_builder_add(&props, "{sv}", "Descriptors", g_variant_new("ao", NULL));
+                g_variant_builder_add(&props, "{sv}", "Descriptors", make_empty_ao());
                 g_variant_builder_add(&ifmap, "{s@a{sv}}", "org.bluez.GattCharacteristic1", g_variant_builder_end(&props));
                 g_variant_builder_add(&root, "{o@a{sa{sv}}}", self->CHAR_PATH, g_variant_builder_end(&ifmap));
             }
@@ -245,7 +253,6 @@ namespace sca {
             if (options) g_variant_unref(options);
             if (value)   g_variant_unref(value);
 
-            // ����
             self->quit_loop(self->res_.ok);
             return;
         }
@@ -289,7 +296,6 @@ namespace sca {
         reg_objmgr_ = g_dbus_connection_register_object(conn_, APP_PATH, objmgr_node->interfaces[0], &OBJMGR_VTABLE, nullptr, nullptr, &err);
         if (!reg_objmgr_) { std::cerr << "[BLE] reg objmgr: " << (err ? err->message : "unknown") << "\n"; if (err)g_error_free(err); return false; }
 
-        // ��������� ��� �� �����ص� �� (bluez�� ���� ����)
         g_dbus_node_info_unref(service_node);
         g_dbus_node_info_unref(char_node);
         g_dbus_node_info_unref(adv_node);
@@ -303,11 +309,18 @@ namespace sca {
         if (reg_char_) { g_dbus_connection_unregister_object(conn_, reg_char_);   reg_char_ = 0; }
         if (reg_service_) { g_dbus_connection_unregister_object(conn_, reg_service_); reg_service_ = 0; }
     }
-
+    void BlePeripheral::unregister_app(const std::string& adapter) {
+        // BlueZ 쪽에서 비동기 처리되지만 동기 호출로 충분
+        g_dbus_connection_call_sync(
+            conn_, "org.bluez", adapter.c_str(),
+            "org.bluez.GattManager1", "UnregisterApplication",
+            g_variant_new("(o)", APP_PATH),
+            nullptr, G_DBUS_CALL_FLAGS_NONE, 5000, nullptr, nullptr);
+    }
     bool BlePeripheral::register_app(const std::string& adapter) {
-        bool ok = false;
+        struct AppRegState { bool done = false; bool ok = false; } st;
         GVariant* options = g_variant_new_array(G_VARIANT_TYPE("{sv}"), nullptr, 0);
-        GError* err = nullptr;
+
         g_dbus_connection_call(
             conn_, "org.bluez", adapter.c_str(),
             "org.bluez.GattManager1", "RegisterApplication",
@@ -316,32 +329,63 @@ namespace sca {
             [](GObject* src, GAsyncResult* res, gpointer user) {
                 GError* e = nullptr;
                 GVariant* r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, &e);
-                bool* pok = static_cast<bool*>(user);
-                if (!r) { std::cerr << "[BLE] RegisterApplication: " << (e ? e->message : "unknown") << "\n"; if (e)g_error_free(e); *pok = false; }
-                else { g_variant_unref(r); *pok = true; }
+                auto* st = static_cast<AppRegState*>(user);
+                if (!r) {
+                    std::cerr << "[BLE] RegisterApplication: " << (e ? e->message : "unknown") << "\n";
+                    if (e) g_error_free(e);
+                    st->ok = false;
+                }
+                else {
+                    g_variant_unref(r);
+                    st->ok = true;
+                }
+                st->done = true;
             },
-            &ok);
-        while (!ok && g_main_context_iteration(nullptr, TRUE)) { /* wait */ }
-        return ok;
+            &st);
+
+        while (!st.done) g_main_context_iteration(nullptr, TRUE);
+        return st.ok;
     }
 
     bool BlePeripheral::register_adv(const std::string& adapter) {
-        struct AdvRegState { bool ok = false, fail = false; } st;
+        struct AdvRegState { bool done = false; bool ok = false; } st;
         GVariant* opts = g_variant_new_array(G_VARIANT_TYPE("{sv}"), nullptr, 0);
-        g_dbus_connection_call(
-            conn_, "org.bluez", adapter.c_str(),
-            "org.bluez.LEAdvertisingManager1", "RegisterAdvertisement",
-            g_variant_new("(o@a{sv})", ADV_PATH, opts),
-            nullptr, G_DBUS_CALL_FLAGS_NONE, -1, nullptr,
-            [](GObject* src, GAsyncResult* res, gpointer user) {
-                GError* e = nullptr;
-                GVariant* r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, &e);
-                auto* st = static_cast<AdvRegState*>(user);
-                if (!r) { std::cerr << "[BLE] RegisterAdvertisement: " << (e ? e->message : "unknown") << "\n"; if (e)g_error_free(e); st->fail = true; }
-                else { g_variant_unref(r); st->ok = true; }
-            },
-            &st);
-        while (!st.ok && !st.fail && g_main_context_iteration(nullptr, TRUE)) { /* spin */ }
+
+        auto submit = [&](AdvRegState* state) {
+            g_dbus_connection_call(
+                conn_, "org.bluez", adapter.c_str(),
+                "org.bluez.LEAdvertisingManager1", "RegisterAdvertisement",
+                g_variant_new("(o@a{sv})", ADV_PATH, opts),
+                nullptr, G_DBUS_CALL_FLAGS_NONE, 8000, nullptr,
+                [](GObject* src, GAsyncResult* res, gpointer user) {
+                    GError* e = nullptr;
+                    GVariant* r = g_dbus_connection_call_finish(G_DBUS_CONNECTION(src), res, &e);
+                    auto* st = static_cast<AdvRegState*>(user);
+                    if (!r) {
+                        std::string msg = (e ? e->message : "unknown");
+                        std::cerr << "[BLE] RegisterAdvertisement: " << msg << "\n";
+                        if (e) g_error_free(e);
+                        st->ok = false;
+                    }
+                    else {
+                        g_variant_unref(r);
+                        st->ok = true;
+                    }
+                    st->done = true;
+                },
+                state);
+            };
+
+        submit(&st);
+        while (!st.done) g_main_context_iteration(nullptr, TRUE);
+        if (st.ok) return true;
+
+        // 특정 환경에서 간헐적 "No object received" → 아주 짧은 재시도
+        // (오브젝트 export 직후 즉시 Register 호출과 레이스 날 때)
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        st = {};
+        submit(&st);
+        while (!st.done) g_main_context_iteration(nullptr, TRUE);
         return st.ok;
     }
 
@@ -372,14 +416,13 @@ namespace sca {
         if (adapter.empty()) { std::cerr << "[BLE] no adapter\n"; return false; }
         res_.adapter_path = adapter;
 
-        // �⺻ ����� ����
         call_set(adapter, "org.bluez.Adapter1", "Powered", g_variant_new_boolean(TRUE));
         call_set(adapter, "org.bluez.Adapter1", "Discoverable", g_variant_new_boolean(TRUE));
         call_set(adapter, "org.bluez.Adapter1", "Pairable", g_variant_new_boolean(TRUE));
         call_set(adapter, "org.bluez.Adapter1", "Alias", g_variant_new_string(cfg_.local_name.c_str()));
 
         if (!export_objects()) return false;
-        if (!register_app(adapter)) { unexport_objects(); return false; }
+        if (!register_adv(adapter)) { unregister_app(adapter); unexport_objects(); return false; }
         if (!register_adv(adapter)) { unexport_objects(); return false; }
 
         std::cout << "[BLE] Advertising service " << service_uuid_
@@ -388,7 +431,6 @@ namespace sca {
             << " encrypt=" << (cfg_.require_encrypt ? "on" : "off")
             << " timeout=" << cfg_.timeout_sec << "s\n";
 
-        // Ÿ�Ӿƿ� Ÿ�̸�
         loop_ = g_main_loop_new(nullptr, FALSE);
         g_timeout_add_seconds(cfg_.timeout_sec, [](gpointer)->gboolean {
             auto* self = BlePeripheral::s_self; if (!self) return G_SOURCE_REMOVE;
@@ -400,11 +442,10 @@ namespace sca {
             return G_SOURCE_REMOVE;
             }, nullptr);
 
-        // ����
         g_main_loop_run(loop_);
 
-        // ����
         unregister_adv(adapter);
+        unregister_app(adapter);
         unexport_objects();
         if (loop_) { g_main_loop_unref(loop_); loop_ = nullptr; }
         if (conn_) { g_object_unref(conn_); conn_ = nullptr; }
