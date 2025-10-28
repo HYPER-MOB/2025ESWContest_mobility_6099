@@ -1,3 +1,4 @@
+import os
 import sys
 import argparse
 
@@ -40,16 +41,16 @@ def all_xyz_indices():
 def index_code(lm_id, coord_id):
     return f"{lm_id:03d}{coord_id:d}"
 
-def capture_face_landmarks(cam_index, width, height, frames, min_valid, refine=False, show=False):
+def capture_face_landmarks(cam_index, frames, min_valid, refine=False, show=False):
     cap = cv2.VideoCapture(cam_index)
     if not cap.isOpened():
         cap = cv2.VideoCapture(cam_index)
         if not cap.isOpened():
             raise RuntimeError("Failed to open camera. Check device index or permissions.")
 
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(os.getenv("FACE_AUTH_CAM_WIDTH", "1280")))
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(os.getenv("FACE_AUTH_CAM_HEIGHT", "720")))
+    cap.set(cv2.CAP_PROP_FPS, int(os.getenv("FACE_AUTH_CAM_FPS", "30")))
 
     mp_face_mesh = mp.solutions.face_mesh
     mesh = mp_face_mesh.FaceMesh(
@@ -172,8 +173,6 @@ def main():
     ap = argparse.ArgumentParser(description="Enroll a user's MediaPipe FaceMesh profile on Windows (USB camera).")
     ap.add_argument("--out", required=True, help="Output profile txt path")
     ap.add_argument("--cam", type=int, default=0, help="Camera index (default 0)")
-    ap.add_argument("--width", type=int, default=1280, help="Capture width")
-    ap.add_argument("--height", type=int, default=720, help="Capture height")
     ap.add_argument("--frames", type=int, default=120, help="Frames to attempt collecting")
     ap.add_argument("--min-valid", type=int, default=40, help="Minimum valid frames required")
     ap.add_argument("--indices", type=str, default="", help=("Comma-separated 4-digit indices to store, e.g. 1230,0561,0072. Empty means store all x,y,z for all 468 landmarks."))
@@ -185,8 +184,6 @@ def main():
         indices = parse_indices_arg(args.indices)
         collected = capture_face_landmarks(
             cam_index=args.cam,
-            width=args.width,
-            height=args.height,
             frames=args.frames,
             min_valid=args.min_valid,
             refine=args.refine,
