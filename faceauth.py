@@ -117,6 +117,71 @@ def cosine_similarity(a, b):
         return -1.0
     return float(np.dot(a, b) / (na * nb))
 
+def _safe_dist(i, j, lms):
+    try:
+        xi, yi = lms[i][0], lms[i][1]
+        xj, yj = lms[j][0], lms[j][1]
+        return float(np.hypot(xi - xj, yi - yj))
+    except Exception:
+        return None
+
+def _compute_mar(lms):
+    d_v = _safe_dist(13, 14, lms)
+    d_h = _safe_dist(78, 308, lms)
+    if d_v is None or d_h is None or d_h < 1e-8:
+        return None
+    return d_v / d_h
+
+def _norm_xy_vec(lms):
+    xs = np.asarray([p[0] for p in lms], dtype=np.float32)
+    ys = np.asarray([p[1] for p in lms], dtype=np.float32)
+    mx, my = float(xs.mean()), float(ys.mean())
+    dists = np.hypot(xs - mx, ys - my)
+    scale = float(np.mean(dists)) if dists.size else 1.0
+    if scale < 1e-8:
+        scale = 1.0
+    xz = (xs - mx) / scale
+    yz = (ys - my) / scale
+    return np.stack([xz, yz], axis=1).reshape(-1)
+
+def liveness_check(camera):
+    enable = os.getenv("FACE_AUTH_LIVENESS", "1") not in ("0", "false", "False")
+    if not enable:
+        return True
+
+    max_frames = int(os.getenv("FACE_AUTH_LIVE_MAX_FRAMES", "80"))
+    timeout_s = float(os.getenv("FACE_AUTH_LIVE_TIMEOUT_S", "6.0"))
+    mar_thresh = float(os.getenv("FACE_AUTH_LIVE_MAR_THRESH", "0.22"))
+    motion_thresh = float(os.getenv("FACE_AUTH_LIVE_MOTION_THRESH", "0.003"))
+
+    t0 = time.time()
+    prev_vec = None
+    motion_vals = []
+    mar_exceeded = False
+    frames = 0
+
+    while frames < max_frames and (time.time() - t0) <= timeout_s:
+        lms = camera.capture_landmarks(attempts=1)
+        if not lms:
+            continue
+        frames += 1
+
+        mar = _compute_mar(lms)
+        if mar is not None and mar > mar_thresh:
+            return True
+
+        cur_vec = _norm_xy_vec(lms)
+        if prev_vec is not None and cur_vec.shape == prev_vec.shape:
+            motion_vals.append(float(np.mean(np.abs(cur_vec - prev_vec))))
+            if len(motion_vals) >= 3:
+                if float(np.mean(motion_vals[-5:])) >= motion_thresh:
+                    return True
+        prev_vec = cur_vec
+
+    avg_motion = float(np.mean(motion_vals)) if motion_vals else 0.0
+    log(f"liveness: frames={frames} mar_hit={mar_exceeded} avg_motion={avg_motion:.6f}")
+    return mar_exceeded or (avg_motion >= motion_thresh)
+
 def _reconstruct_xy_map(indices, vec):
     xy = {}
     for (lm_id, c), v in zip(indices, vec):
@@ -265,6 +330,20 @@ def main():
             if last_in != 2 and cur == 2:
                 write_int(out_path, 2)
                 print("Starting face authentication...")
+
+                is_live = False
+                if camera is not None:
+                    try:
+                        is_live = liveness_check(camera)
+                    except Exception as e:
+                        log(f"Liveness check error: {e}")
+                        is_live = False
+                if not is_live:
+                    write_int(out_path, 4)
+                    print("Face authentication completed: Failure (liveness)")
+                    last_in = cur
+                    continue
+
                 ok = False
                 if not profile_path:
                     log("FACE_AUTH_PROFILE_PATH is not set")
