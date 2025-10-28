@@ -107,6 +107,7 @@ void Sequencer::reset_to_idle_() {
 }
 void Sequencer::start_sequence_() {
     if (running_) return;
+    cam_data_cnt = 0;
     running_ = true;
     step_ = AuthStep::WaitingTCU;
     request_user_info_to_tcu_();
@@ -135,7 +136,6 @@ bool Sequencer::perform_ble_() {
     return matched;
 }
 bool Sequencer::setting_cam_(bool type) {
-    cam_data_cnt = 0;
     bool ok = cam_initial_(type);
     if (!ok) return false;
     if(type)cam_data_setting_(cam_data_.data(), cam_data_cnt);
@@ -149,6 +149,11 @@ bool Sequencer::perform_cam_(uint8_t* result) {
     return ok_flag;
 }
 void Sequencer::on_can_rx(const CanFrame& f) {
+    for(int i=0;i<f.dlc;i++)
+    {
+        std::printf("%02X ",f.data[i]);
+    }
+    std::printf("\n");
     switch (f.id) {
     case PCAN_ID_DCU_SCA_USER_FACE_REQ: {
         start_sequence_();
@@ -183,6 +188,7 @@ void Sequencer::on_can_rx(const CanFrame& f) {
         std::memcpy(&v, f.data, 4);
 
             if (v == 0xFFFFFFFF) {
+                std::printf("[Data]");
                 have_collected_cam_ = true;
                 cam_data_[cam_data_cnt].first = v;
                 cam_data_[cam_data_cnt].second = 0;

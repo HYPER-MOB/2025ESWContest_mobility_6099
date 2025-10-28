@@ -109,9 +109,9 @@ namespace sca {
         const std::vector<std::string>& args,
         const std::optional<std::string>& working_dir)
     {
-        const std::string python = "python3";
+        const std::string python = "conda run -n base python3";
 
-        // ½ºÅ©¸³Æ® °æ·Î: working_dir°¡ ÀÖÀ¸¸é °Å±â ±â¹Ý Àý´ë/»ó´ë °æ·Î ¸ðµÎ OK
+        // ï¿½ï¿½Å©ï¿½ï¿½Æ® ï¿½ï¿½ï¿½: working_dirï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Å±ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ OK
         std::vector<std::string> all_args;
         std::filesystem::path script = working_dir
             ? (std::filesystem::path(*working_dir) / script_filename)
@@ -120,17 +120,17 @@ namespace sca {
         all_args.emplace_back(script.string());
         all_args.insert(all_args.end(), args.begin(), args.end());
 
-        // argv ±¸¼º
+        // argv ï¿½ï¿½ï¿½ï¿½
         std::vector<char*> argv = make_argv(python, all_args);
 
-        // --- 1) working_dir ¾ø´Â °æ¿ì: posix_spawnp ±×´ë·Î »ç¿ë ---
+        // --- 1) working_dir ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½: posix_spawnp ï¿½×´ï¿½ï¿½ ï¿½ï¿½ï¿½ ---
         if (!working_dir.has_value() || working_dir->empty()) {
             pid_t pid = -1;
 
             posix_spawn_file_actions_t fa;
             posix_spawn_file_actions_t* pfa = nullptr;
             posix_spawn_file_actions_init(&fa);
-            // (ÇÊ¿ä½Ã ÆÄÀÏ ¸®´ÙÀÌ·ºÆ® ¾×¼Ç µîÀ» ¿©±â¿¡ Ãß°¡)
+            // (ï¿½Ê¿ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ì·ï¿½Æ® ï¿½×¼ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½â¿¡ ï¿½ß°ï¿½)
             int rc = posix_spawnp(&pid, python.c_str(), pfa,
                 /*attrp*/nullptr, argv.data(), environ);
             posix_spawn_file_actions_destroy(&fa);
@@ -141,22 +141,22 @@ namespace sca {
             return ProcessHandle{ static_cast<int>(pid) };
         }
 
-        // --- 2) working_dir ÀÖ´Â °æ¿ì: fork + chdir + execvp ---
+        // --- 2) working_dir ï¿½Ö´ï¿½ ï¿½ï¿½ï¿½: fork + chdir + execvp ---
         {
             pid_t pid = ::fork();
             if (pid < 0) {
-                // fork ½ÇÆÐ
+                // fork ï¿½ï¿½ï¿½ï¿½
                 return ProcessHandle{ -1 };
             }
             if (pid == 0) {
-                // ÀÚ½Ä ÇÁ·Î¼¼½º
+                // ï¿½Ú½ï¿½ ï¿½ï¿½ï¿½Î¼ï¿½ï¿½ï¿½
                 if (::chdir(working_dir->c_str()) != 0) {
-                    _exit(127); // chdir ½ÇÆÐ
+                    _exit(127); // chdir ï¿½ï¿½ï¿½ï¿½
                 }
                 ::execvp(python.c_str(), argv.data());
-                _exit(127);     // exec ½ÇÆÐ ½Ã
+                _exit(127);     // exec ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½
             }
-            // ºÎ¸ð: ÀÚ½Ä PID ¹ÝÈ¯
+            // ï¿½Î¸ï¿½: ï¿½Ú½ï¿½ PID ï¿½ï¿½È¯
             return ProcessHandle{ static_cast<int>(pid) };
         }
 
