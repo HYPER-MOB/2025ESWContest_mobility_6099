@@ -55,7 +55,7 @@ namespace sca {
         bool register_app(const std::string& adapter);
         bool register_adv(const std::string& adapter);
         void unregister_adv(const std::string& adapter);
-
+        void unregister_app(const std::string& adapter);
         void quit_loop(bool ok);
 
         static BlePeripheral* s_self;
