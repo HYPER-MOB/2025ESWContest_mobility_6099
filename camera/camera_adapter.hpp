@@ -28,7 +28,7 @@ namespace sca {
 		eInput curStep;
 		ProcessHandle python_Handle;
 	};
-	enum class eFile { Auth, Drive,Input,Output,Data };
+	enum class eFile { Auth, Drive,DriveFile,Input,Output,Data };
 	const char* ai_filename(eFile type);
 	bool cam_initial_(bool type);
 	bool cam_Terminate_();
@@ -36,7 +36,7 @@ namespace sca {
 	bool cam_data_setting_(std::pair<uint32_t,float>* data, int len);
 
 	uint8_t cam_authenticating_(bool* ok);
-
+	bool cam_authenticating_drive_();
 	bool cam_clean_();
 
 	bool cam_start_();

@@ -14,6 +14,7 @@ using sca::cam_data_setting_;
 using sca::cam_start_;
 using sca::cam_Terminate_;
 using sca::cam_authenticating_;
+using sca::cam_authenticating_drive_;
 
 uint32_t bswap32(uint32_t v) {
     return ((v & 0x000000FFu) << 24) |
@@ -338,31 +339,15 @@ void Sequencer::tick() {
      }break;
      case AuthStep::Driving:
      {
-         uint8_t result;
-         ok = perform_cam_(&result);
-
          if (!driving) {
              cam_Terminate_();
              step_ = AuthStep::Idle;
          }
-         switch (result)
-         {
-         case 1/*Ready*/:
-             std::printf("[Drive] Start\n");
-             cam_start_();
-             break;
-         case 3/*Result*/:
-             std::printf("[Drive] Catch\n");
+         ok = cam_authenticating_drive_();
+         if (ok) {
              send_sleep_check();
-             break;
-         case 4/*Error*/:
              cam_Terminate_();
-             std::printf("[Drive] Program Issue\n");
-             step_ = AuthStep::Drive;
-             break;
-
-         default:
-             break;
+             step_ = AuthStep::Idle;
          }
      }break;
     case AuthStep::Idle:

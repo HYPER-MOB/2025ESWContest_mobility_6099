@@ -7,33 +7,35 @@
 #include <thread>
 
 #define CAM_AUTH "faceauth.py"
-#define CAM_RIDE "drowsiness.py"
+#define CAM_DRIVE "drowsiness.py"
 #define CAM_DATA "user1.txt"
 #define CAM_INPUT "input.txt"
 #define CAM_OUTPUT "output.txt"
+#define CAM_DRIVE_OUTPUT "drowsiness.txt"
 namespace sca {
 	CamConfig cfg; std::filesystem::path PATH_AI;
 
 	const char* ai_filename(eFile type) {
 		switch (type) {
 		case eFile::Auth: return CAM_AUTH;
-		case eFile::Drive: return CAM_RIDE;
+		case eFile::Drive: return CAM_DRIVE;
 		case eFile::Data: return CAM_DATA;
 		case eFile::Input: return CAM_INPUT;
 		case eFile::Output: return CAM_OUTPUT;
+		case eFile::DriveFile: return CAM_DRIVE_OUTPUT;
 		default:          return CAM_AUTH;
 		}
 	}
 	bool cam_initial_(bool type)
 	{
-		cfg.curStep=eInput::Default;
-		cfg.inputStep=eInput::Default;
+		cfg.curStep = eInput::Default;
+		cfg.inputStep = eInput::Default;
 
 		PATH_AI = get_ai_path();
-		std::filesystem::path script = PATH_AI / ai_filename(type?eFile::Auth:eFile::Drive);
+		std::filesystem::path script = PATH_AI / ai_filename(type ? eFile::Auth : eFile::Drive);
 		std::filesystem::path in = PATH_AI / ai_filename(eFile::Input);
 		bool ok = write_text(in.string(), "1", WriteMode::Truncate);
-		if(ok)
+		if (ok)
 		{
 			cfg.python_Handle = run_python(script.string());
 			ok = cfg.python_Handle.valid();
@@ -45,7 +47,7 @@ namespace sca {
 	}
 	bool cam_data_setting_(std::pair<uint32_t, float>* data, int len)
 	{
-		std::filesystem::path dst= PATH_AI / ai_filename(eFile::Data);
+		std::filesystem::path dst = PATH_AI / ai_filename(eFile::Data);
 
 		if (len > 0) {
 			if (!write_pair_line(dst.string(), data[0].first, data[0].second,
@@ -60,10 +62,10 @@ namespace sca {
 	}
 	bool cam_start_()
 	{
-		if(cfg.curStep!=eInput::eI_Wait)return false;
+		if (cfg.curStep != eInput::eI_Wait)return false;
 		std::filesystem::path in = PATH_AI / ai_filename(eFile::Input);
 		bool ok = write_text(in.string(), "2", WriteMode::Truncate);
-		if(ok)cfg.inputStep = eInput::eI_Action;
+		if (ok)cfg.inputStep = eInput::eI_Action;
 		return ok;
 	}
 
@@ -74,63 +76,76 @@ namespace sca {
 		cfg.inputStep = eInput::eI_Terminate;
 		return ok;
 	}
+	bool cam_authenticating_drive_() {
 
+		int ec = 0;
+		if (!try_get_exit(cfg.python_Handle, ec)) {
+			return 0;
+		}
+
+		const std::filesystem::path out = PATH_AI / ai_filename(eFile::DriveFile);
+		int val = read_single_char_code(out.string());
+		if (val=='1') {
+			return true;
+		}
+		return false;
+	}
 	uint8_t cam_authenticating_(bool* ok) {
-    if (ok) *ok = false;
+		if (ok) *ok = false;
 
-    int ec = 0;
-    if (!try_get_exit(cfg.python_Handle, ec)) {
-        return 0;
-    }
+		int ec = 0;
+		if (!try_get_exit(cfg.python_Handle, ec)) {
+			return 0;
+		}
 
-    const std::filesystem::path out = PATH_AI / ai_filename(eFile::Output);
-    int val = read_single_char_code(out.string());
-    if (val < 0) {
-        return 4;
-    }
-    switch (val) {
-    case '0'://Terminate
-        if (cfg.inputStep == eInput::eI_Terminate) {
-            cam_clean_();
-            cfg.curStep = eInput::eI_Terminate;
-            return 2;
-        }
-        break;
+		const std::filesystem::path out = PATH_AI / ai_filename(eFile::Output);
+		int val = read_single_char_code(out.string());
+		if (val < 0) {
+			return 4;
+		}
+		switch (val) {
+		case '0'://Terminate
+			if (cfg.inputStep == eInput::eI_Terminate) {
+				cam_clean_();
+				cfg.curStep = eInput::eI_Terminate;
+				return 2;
+			}
+			break;
 
-    case '1'://Ready
-        if (cfg.inputStep == eInput::eI_Wait) {
-            cfg.curStep = eInput::eI_Wait;
-            return 1;
-        }
-        break;
+		case '1'://Ready
+			if (cfg.inputStep == eInput::eI_Wait) {
+				cfg.curStep = eInput::eI_Wait;
+				return 1;
+			}
+			break;
 
-    case '2'://Action
-        if (cfg.inputStep == eInput::eI_Action) {
-			std::printf("[CAM] Action\n");
-            cfg.curStep = eInput::eI_Action;
-        }
-        break;
+		case '2'://Action
+			if (cfg.inputStep == eInput::eI_Action) {
+				std::printf("[CAM] Action\n");
+				cfg.curStep = eInput::eI_Action;
+			}
+			break;
 
-    case '3'://Action
-        if (cfg.curStep == eInput::eI_Action) {
-            if (ok) *ok = true;
-            return 3;
-        }
-        break;
+		case '3'://Action
+			if (cfg.curStep == eInput::eI_Action) {
+				if (ok) *ok = true;
+				return 3;
+			}
+			break;
 
-	case '4':
-        if (cfg.curStep == eInput::eI_Action) {
-            if (ok) *ok = false;
-			return 3;
-        }
-        break;
+		case '4':
+			if (cfg.curStep == eInput::eI_Action) {
+				if (ok) *ok = false;
+				return 3;
+			}
+			break;
 
-    default:
-		std::printf("[TEST output reading %c \n", val);
-        break;
-    }
-    return 0;
-}
+		default:
+			std::printf("[TEST output reading %c \n", val);
+			break;
+		}
+		return 0;
+	}
 
 	bool cam_clean_() {
 		if (cfg.python_Handle.valid()) {
@@ -138,7 +153,7 @@ namespace sca {
 			for (int i = 0; i < 20; ++i) {
 				int ec = 0;
 				if (try_get_exit(cfg.python_Handle, ec)) {
-					cfg.python_Handle = ProcessHandle{}; 
+					cfg.python_Handle = ProcessHandle{};
 					return true;
 				}
 				std::this_thread::sleep_for(std::chrono::milliseconds(100));
