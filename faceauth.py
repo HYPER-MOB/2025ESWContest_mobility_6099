@@ -65,8 +65,8 @@ class CameraFaceMesh:
         self._mp_face_mesh = mp.solutions.face_mesh
 
         refine = os.getenv("FACE_AUTH_REFINE_LANDMARKS", "1") not in ("0", "false", "False")
-        det_conf = float(os.getenv("FACE_AUTH_DET_CONF", "0.7"))
-        trk_conf = float(os.getenv("FACE_AUTH_TRK_CONF", "0.7"))
+        det_conf = float(os.getenv("FACE_AUTH_DET_CONF", "0.9"))
+        trk_conf = float(os.getenv("FACE_AUTH_TRK_CONF", "0.9"))
         max_faces = int(os.getenv("FACE_AUTH_MAX_FACES", "1"))
 
         self._face_mesh = self._mp_face_mesh.FaceMesh(
@@ -135,7 +135,7 @@ def build_vector_from_landmarks(indices, landmarks):
 def match_profile(camera, indices, stored_vec, max_attempts):
     attempts = max(1, int(max_attempts))
     s_norm = zscore(stored_vec)
-    thresh = float(os.getenv("FACE_AUTH_THRESHOLD", "0.97"))
+    thresh = float(os.getenv("FACE_AUTH_THRESHOLD", "0.99"))
     for i in range(attempts):
         lms = camera.capture_landmarks(attempts=1)
         if not lms:
@@ -153,7 +153,7 @@ def main():
     out_path = os.getenv("FACE_AUTH_OUTPUT_FILE", "output.txt")
     profile_path = os.getenv("FACE_AUTH_PROFILE_PATH", "user1.txt").strip()
     poll_s = float(os.getenv("FACE_AUTH_POLL_SEC", "0.1"))
-    max_attempts = int(os.getenv("FACE_AUTH_MAX_ATTEMPTS", "60"))
+    max_attempts = int(os.getenv("FACE_AUTH_MAX_ATTEMPTS", "120"))
 
     try:
         camera = CameraFaceMesh()
