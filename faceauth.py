@@ -117,14 +117,52 @@ def cosine_similarity(a, b):
         return -1.0
     return float(np.dot(a, b) / (na * nb))
 
-def build_vector_from_landmarks(indices, landmarks):
+def _reconstruct_xy_map(indices, vec):
+    xy = {}
+    for (lm_id, c), v in zip(indices, vec):
+        if c in (0, 1):
+            d = xy.get(lm_id, {})
+            d[c] = float(v)
+            xy[lm_id] = d
+    out = {}
+    for lm_id, d in xy.items():
+        if 0 in d and 1 in d:
+            out[lm_id] = (d[0], d[1])
+    return out
+
+def _ratio_vector_from_xy(xy_map, lm_ids, method):
+    eps = 1e-8
+    mx = my = 0.0
+    scale = 1.0
+    if method == "ipd" and 33 in xy_map and 263 in xy_map:
+        ax, ay = xy_map[33]
+        bx, by = xy_map[263]
+        mx = (ax + bx) * 0.5
+        my = (ay + by) * 0.5
+        scale = float(np.hypot(ax - bx, ay - by))
+        if scale < eps:
+            method = "centroid"
+    if method == "centroid":
+        pts = [xy_map[lm] for lm in lm_ids if lm in xy_map]
+        if pts:
+            xs = np.array([p[0] for p in pts], dtype=np.float32)
+            ys = np.array([p[1] for p in pts], dtype=np.float32)
+            mx = float(xs.mean())
+            my = float(ys.mean())
+            dists = np.hypot(xs - mx, ys - my)
+            scale = float(np.mean(dists)) if dists.size else 1.0
+            if scale < eps:
+                scale = 1.0
+        else:
+            return np.zeros((len(lm_ids),), dtype=np.float32)
     out = []
-    for lm_id, coord_id in indices:
-        if lm_id >= len(landmarks):
+    for lm in lm_ids:
+        if lm in xy_map:
+            x, y = xy_map[lm]
+            d = float(np.hypot(x - mx, y - my))
+            out.append(d / scale if scale > eps else 0.0)
+        else:
             out.append(np.nan)
-            continue
-        x, y, z = landmarks[lm_id]
-        out.append(x if coord_id == 0 else (y if coord_id == 1 else z))
     v = np.asarray(out, dtype=np.float32)
     if np.isnan(v).any():
         finite = v[np.isfinite(v)]
@@ -132,18 +170,50 @@ def build_vector_from_landmarks(indices, landmarks):
         v = np.where(np.isfinite(v), v, fill)
     return v
 
+def _prepare_ratio_profile(indices, stored_vec):
+    xy = _reconstruct_xy_map(indices, stored_vec)
+    if not xy:
+        return [], None, None
+    lm_ids = sorted(xy.keys())
+    method = "ipd" if (33 in xy and 263 in xy) else "centroid"
+    v = _ratio_vector_from_xy(xy, lm_ids, method)
+    return lm_ids, v, method
+
+def _build_ratio_from_landmarks(lm_ids, landmarks, method):
+    xy = {}
+    for lm in lm_ids:
+        if lm < len(landmarks):
+            x, y, _ = landmarks[lm]
+            xy[lm] = (float(x), float(y))
+    if method == "ipd" and 33 < len(landmarks) and 263 < len(landmarks):
+        ax, ay, _ = landmarks[33]
+        bx, by, _ = landmarks[263]
+        xy[33] = (float(ax), float(ay))
+        xy[263] = (float(bx), float(by))
+    return _ratio_vector_from_xy(xy, lm_ids, method)
+
 def match_profile(camera, indices, stored_vec, max_attempts):
     attempts = max(1, int(max_attempts))
-    s_norm = zscore(stored_vec)
+    frames_per_attempt = int(os.getenv("FACE_AUTH_FRAMES_PER_ATTEMPT", "5"))
+    lm_ids, s_ratio, method = _prepare_ratio_profile(indices, stored_vec)
+    if not lm_ids:
+        return False
+    s_norm = zscore(s_ratio)
     thresh = float(os.getenv("FACE_AUTH_THRESHOLD", "0.99"))
     for i in range(attempts):
-        lms = camera.capture_landmarks(attempts=1)
-        if not lms:
+        vecs = []
+        for _ in range(max(1, frames_per_attempt)):
+            lms = camera.capture_landmarks(attempts=1)
+            if not lms:
+                continue
+            measured = _build_ratio_from_landmarks(lm_ids, lms, method)
+            vecs.append(measured)
+        if not vecs:
             continue
-        measured = build_vector_from_landmarks(indices, lms)
-        m_norm = zscore(measured)
+        m = np.mean(np.stack(vecs, axis=0), axis=0)
+        m_norm = zscore(m)
         sim = cosine_similarity(s_norm, m_norm)
-        log(f"attempt {i+1}: cosine={sim:.6f}")
+        log(f"attempt {i+1}: frames={len(vecs)} cosine={sim:.6f}")
         if sim >= thresh:
             return True
     return False
