@@ -24,7 +24,7 @@ static const QString kSock = "/tmp/dcu.demo.sock";
 
 // 모든 IPC 클라이언트 관리 (브로드캐스트용)
 static QSet<IpcConnection*> g_clients;
-
+static constexpr int kPowerApplyAckDelayMs = 10000; // 10초
 // ── 메시지 ID (표 기준) ──────────────────────────────────────────────────────
 // Body CAN (DCU -> Power*)
 static constexpr uint32_t ID_DCU_SEAT_ORDER   = 0x101; // DLC 4 (→ can1 TX)
@@ -717,6 +717,18 @@ int main(int argc, char** argv) {
         if (seatChanged)   sendToAll([](IpcConnection* cc){ sendSeatState(cc); });
         if (mirrorChanged) sendToAll([](IpcConnection* cc){ sendMirrorState(cc); });
         if (wheelChanged)  sendToAll([](IpcConnection* cc){ sendWheelState(cc); });
+        
+
+
+	if (c) {
+	    QPointer<IpcConnection> pc = c;   
+	    const QString req = m.reqId;
+
+	    QTimer::singleShot(kPowerApplyAckDelayMs, qApp, [pc, req]{
+		if (!pc) return; 
+		pc->send({"power/apply/ack", req, QJsonObject{{"ok", true}}});
+	    });
+	}
     });
 
     // UI → 사용자 프로필 업데이트 (can0)
