@@ -81,7 +81,6 @@ static void dump_target_basic(const nfc_target& nt) {
  }
 bool nfc_poll_once(const NfcConfig& cfg, NfcResult& out) {
     out = NfcResult{};  // ok=false, uid_hex=""
-
     nfc_context* ctx = nullptr;
     nfc_init(&ctx);
     if (!ctx) { std::cerr << "[NFC] nfc_init failed\n"; return false; }
@@ -94,75 +93,68 @@ bool nfc_poll_once(const NfcConfig& cfg, NfcResult& out) {
         nfc_close(pnd); nfc_exit(ctx); return false;
     }
 
-    const int uiPollNr = 1;
-   const int uiPeriodMs = 150; // 150~200ms 권장
+    // 블로킹 최소화 & ISO-DEP/APDU 준비
+    nfc_device_set_property_bool(pnd, NP_INFINITE_SELECT, false);
+    nfc_device_set_property_bool(pnd, NP_ACTIVATE_FIELD, true);
+    nfc_device_set_property_int(pnd, NP_TIMEOUT_COMMAND, 500);
+    nfc_device_set_property_int(pnd, NP_TIMEOUT_ATR, 200);
+    nfc_device_set_property_bool(pnd, NP_EASY_FRAMING, true);
+    nfc_device_set_property_bool(pnd, NP_AUTO_ISO14443_4, true);
 
-    // ★ 블로킹 원인 제거(핵심 3줄) + 안전 타임아웃
-    nfc_device_set_property_bool(pnd, NP_INFINITE_SELECT, false);   // 무한 select 금지
-    nfc_device_set_property_bool(pnd, NP_ACTIVATE_FIELD,  true);    // 안테나 필드 ON
-    nfc_device_set_property_int (pnd, NP_TIMEOUT_COMMAND, 500);     // 명령 타임아웃
-    nfc_device_set_property_int (pnd, NP_TIMEOUT_ATR,     200);     // ATR 타임아웃
-
+    const nfc_modulation mod = { NMT_ISO14443A, NBR_106 };
 
     const int poll_seconds = (cfg.poll_seconds > 0 ? cfg.poll_seconds : 5);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(poll_seconds);
 
     bool ever_detected = false;
+    int  iter = 0;
 
     while (std::chrono::steady_clock::now() < deadline) {
         nfc_target nt{};
-        int rc = nfc_initiator_poll_target(pnd, kMods, 1, /*uiPollNr*/2, /*uiPeriod*/200, &nt);
+        int rc = nfc_initiator_select_passive_target(pnd, mod,
+            /*pbtInitData*/nullptr, 0, &nt);
         if (rc > 0) {
             ever_detected = true;
+
             std::string uid_hex, hce_hex;
-            switch (nt.nm.nmt) {
-            case NMT_ISO14443A:
-                if (nt.nti.nai.szUidLen > 0) {
-                    uid_hex = to_hex(nt.nti.nai.abtUid, nt.nti.nai.szUidLen);
-                    std::cout << "[NFC] ISO14443A UID=" << uid_hex << "\n";
-                } else {
-                    std::cout << "[NFC] ISO14443A detected (UID len=0)\n";
-                } // ★ ISO-DEP APDU 시도 → 성공 시 hce_hex 사용
-                if (try_apdu_exchange(pnd, hce_hex)) {
-                    out.ok = true;
-                    out.uid_hex = hce_hex;
-                    out.use_apdu = true;
-                }
-                else if (!uid_hex.empty()) {
-                    out.ok = true;
-                    out.uid_hex = uid_hex;
-                    out.use_apdu = false;
-                }
-                break;
-            default:
-                dump_target_basic(nt);
-                break;
+            if (nt.nm.nmt == NMT_ISO14443A && nt.nti.nai.szUidLen > 0) {
+                uid_hex = to_hex(nt.nti.nai.abtUid, nt.nti.nai.szUidLen);
+                // std::cout << "[NFC] UID=" << uid_hex << "\n";
             }
 
-            // 선택 해제는 한 번만
+            if (try_apdu_exchange(pnd, hce_hex)) {
+                out.ok = true; out.uid_hex = hce_hex; out.use_apdu = true;
+            }
+            else if (!uid_hex.empty()) {
+                out.ok = true; out.uid_hex = uid_hex; out.use_apdu = false;
+            }
+
             nfc_initiator_deselect_target(pnd);
-
-            // UID를 얻었으면 여기서 결과 확정
-            if (out.ok) {
-                break;
-            }
+            if (out.ok) break;
         }
         else if (rc == 0) {
-            std::cerr << "[NFC] polling...\n";
+
         }
-        else { // rc < 0
-            std::cerr << "[NFC] poll error: " << nfc_strerror(pnd) << "\n";
+        else {
+            // std::cerr << "[NFC] select err: " << nfc_strerror(pnd) << "\n";
+            nfc_initiator_target_is_present(pnd, nullptr); 
+            nfc_initiator_init(pnd);
+            nfc_device_set_property_bool(pnd, NP_ACTIVATE_FIELD, true);
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(uiPeriodMs));
+        std::this_thread::sleep_for(std::chrono::milliseconds(80));
+        ++iter;
+
+        if ((iter % 12) == 0) {
+            nfc_device_set_property_bool(pnd, NP_ACTIVATE_FIELD, false);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            nfc_device_set_property_bool(pnd, NP_ACTIVATE_FIELD, true);
+        }
     }
 
     if (!out.ok) {
-        if (ever_detected) {
-            std::cerr << "[NFC] 태그 감지했지만 UID를 읽지 못함\n";
-        } else {
-            std::cerr << "[NFC] 제한시간(" << poll_seconds << "s) 내 미검출\n";
-        }
+        if (ever_detected) std::cerr << "[NFC] 태그 감지했지만 UID/APDU 못 읽음\n";
+        else               std::cerr << "[NFC] 제한시간(" << poll_seconds << "s) 내 미검출\n";
     }
 
     nfc_close(pnd);
