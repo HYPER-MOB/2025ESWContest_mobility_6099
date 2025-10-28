@@ -203,7 +203,7 @@ AxisConfig CFG_LEFT_PITCH = {
 AxisConfig CFG_RIGHT_YAW = {
     .min_val        = 0,
     .max_val        = 180,
-    .def_val        = 90,
+    .def_val        = 0,
     .stroke_toMax_ms   = 6250.0f,
     .stroke_toMin_ms   = 6250.0f, 
     .onMoveToMin    = { {PIN_RIGHT_PIN_6, true}, {PIN_RIGHT_PIN_7, false}, {PIN_RIGHT_PIN_8, true} },
@@ -213,7 +213,7 @@ AxisConfig CFG_RIGHT_YAW = {
 AxisConfig CFG_RIGHT_PITCH = {
     .min_val        = 0,
     .max_val        = 180,
-    .def_val        = 90,
+    .def_val        = 0,
     .stroke_toMax_ms   = 6250.0f,
     .stroke_toMin_ms   = 6250.0f, 
     .onMoveToMin    = { {PIN_RIGHT_PIN_6, false}, {PIN_RIGHT_PIN_7, true}, {PIN_RIGHT_PIN_8, true} },
@@ -445,6 +445,8 @@ static void pwm_setup(void) {
     g_pwm_freq_hz   = 50.0f;                 // 필요시 사용자 지정
     g_pwm_period_us = 1000000.0f / g_pwm_freq_hz;
     pwm.setPWMFreq(g_pwm_freq_hz);
+    pwm_setAngle(SRV_YAW, SRV_YAW.current);
+    pwm_setAngle(SRV_PITCH, SRV_PITCH.current);
 }
 
 static void pwm_seq_start() {
@@ -507,15 +509,41 @@ static void pwm_abort(ServoRt& s){
 static void pwm_button(ServoRt& s, int btn){
     int sign = btn_sign(btn); // 0, +1, -1
     if (sign == 0){
-        pwm_abort(s); // 즉시 멈춤
+        // 버튼을 떼면 즉시 멈춤 (요구사항)
+        pwm_abort(s);
         return;
     }
+
+    // 눌렸을 때: 진행 중 & 같은 방향이면 타깃 연장, 아니면 새 세그먼트 시작
     uint32_t now = millis();
     int from = s.active ? pwm_eval_now(s, now) : s.current;
     int step = pwm_jog_step_for(s);
-    s.target = constrain(from + sign * step, 0, 180);
+    int wantTarget = constrain(from + sign * step, 0, 180);
+
+    // 이미 진행 중인 경우: 같은 방향이면 연장
+    bool sameDir = false;
+    if (s.active && s.duration_ms > 0) {
+        int cur = pwm_eval_now(s, now);
+        sameDir = ((s.target - cur) * sign) > 0; // 현재 진행 방향과 버튼 방향 일치?
+        if (sameDir) {
+            // 진행 중 위치 기준으로 새 타깃 재설정(연장)
+            s.start_val   = cur;
+            s.target      = wantTarget;
+            s.start_ms    = now;
+            s.duration_ms = pwm_duration_for(cur, s.target, s.ms_per_deg);
+            // 각도 반영은 update가 계속 해줌
+            return;
+        }
+        // 방향이 바뀌었으면 일단 현재 위치로 스냅 후 새로 시작
+        s.current = cur;
+        s.active  = false;
+    }
+
+    // 새 세그먼트 시작
+    s.target = wantTarget;
     pwm_start(s);
 }
+
 // PWM Function ========================================================
 
 // REALY Function ======================================================
@@ -942,7 +970,8 @@ void fsm_stateNotReadyLoop() {
                     if (g_ackTries >= ACK_MAX_TRIES) {
                         // 예: CAN 재오픈 시도, 또는 잠시 대기 등
                         // can_open 재시도 로직을 넣을 수 있음
-                        g_ackTries = 0; // 계속 시도할 거라면 카운터 리셋
+                        g_ackTries = 0; 
+                        fsm_enterState(State::Ready);
                     }
                 }
             }
@@ -971,8 +1000,8 @@ void fsm_stateReadyLoop() {
     relay_button(RT_RIGHT_PITCH, btn_rp);
     relay_button(RT_RIGHT_YAW,   btn_ry);
 
-    int btn_sp = btn_with_timeout(g_btn_room_pitch, g_btn_ts_room_pitch);
-    int btn_sy = btn_with_timeout(g_btn_room_yaw,   g_btn_ts_room_yaw);
+    int btn_sp = g_btn_room_pitch;
+    int btn_sy = g_btn_room_yaw;
     btn_resolve_mutex_pair(btn_sp, g_btn_ts_room_pitch, btn_sy, g_btn_ts_room_yaw);
 
     pwm_button(SRV_YAW,   btn_sy);
