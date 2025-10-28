@@ -1,18 +1,15 @@
-import os
 import sys
 import argparse
-from typing import List, Tuple, Dict
+
 import numpy as np
 import cv2
 import mediapipe as mp
 
-
-def log(msg: str) -> None:
+def log(msg):
     sys.stderr.write(msg + "\n")
     sys.stderr.flush()
 
-
-def parse_indices_arg(indices_str: str) -> List[Tuple[int, int]]:
+def parse_indices_arg(indices_str):
     if not indices_str:
         return []
     out = []
@@ -33,28 +30,18 @@ def parse_indices_arg(indices_str: str) -> List[Tuple[int, int]]:
             seen.add(x)
     return uniq
 
-
-def all_xyz_indices() -> List[Tuple[int, int]]:
+def all_xyz_indices():
     idx = []
     for lm in range(468):
         for c in (0, 1, 2):
             idx.append((lm, c))
     return idx
 
-
-def index_code(lm_id: int, coord_id: int) -> str:
+def index_code(lm_id, coord_id):
     return f"{lm_id:03d}{coord_id:d}"
 
-
-def capture_face_landmarks(
-    cam_index: int,
-    width: int,
-    height: int,
-    frames: int,
-    min_valid: int,
-    refine: bool = False,
-) -> List[List[Tuple[float, float, float]]]:
-    cap = cv2.VideoCapture(cam_index, cv2.CAP_DSHOW)
+def capture_face_landmarks(cam_index, width, height, frames, min_valid, refine=False, show=False):
+    cap = cv2.VideoCapture(cam_index)
     if not cap.isOpened():
         cap = cv2.VideoCapture(cam_index)
         if not cap.isOpened():
@@ -73,7 +60,13 @@ def capture_face_landmarks(
         min_tracking_confidence=0.5,
     )
 
-    collected: List[List[Tuple[float, float, float]]] = []
+    if show:
+        try:
+            cv2.namedWindow("Facemesh", cv2.WINDOW_NORMAL)
+        except Exception:
+            show = False
+
+    collected = []
     try:
         log("Keep your face steady in view... collecting frames.")
         attempts = 0
@@ -85,6 +78,41 @@ def capture_face_landmarks(
             rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
             results = mesh.process(rgb)
             attempts += 1
+
+            if show:
+                overlay = frame_bgr.copy()
+                if results.multi_face_landmarks:
+                    face_landmarks = results.multi_face_landmarks[0]
+                    mp_drawing = mp.solutions.drawing_utils
+                    mp_styles = mp.solutions.drawing_styles
+                    mp_drawing.draw_landmarks(
+                        image=overlay,
+                        landmark_list=face_landmarks,
+                        connections=mp_face_mesh.FACEMESH_TESSELATION,
+                        landmark_drawing_spec=None,
+                        connection_drawing_spec=mp_styles.get_default_face_mesh_tesselation_style(),
+                    )
+                    mp_drawing.draw_landmarks(
+                        image=overlay,
+                        landmark_list=face_landmarks,
+                        connections=mp_face_mesh.FACEMESH_CONTOURS,
+                        landmark_drawing_spec=None,
+                        connection_drawing_spec=mp_styles.get_default_face_mesh_contours_style(),
+                    )
+                    if refine:
+                        mp_drawing.draw_landmarks(
+                            image=overlay,
+                            landmark_list=face_landmarks,
+                            connections=mp_face_mesh.FACEMESH_IRISES,
+                            landmark_drawing_spec=None,
+                            connection_drawing_spec=mp_styles.get_default_face_mesh_iris_connections_style(),
+                        )
+                cv2.imshow("Facemesh", overlay)
+                key = cv2.waitKey(1) & 0xFF
+                if key == 27 or key == ord("q"):
+                    log("User requested exit.")
+                    break
+
             if results.multi_face_landmarks:
                 lm = results.multi_face_landmarks[0].landmark
                 if len(lm) >= 468:
@@ -111,16 +139,17 @@ def capture_face_landmarks(
             cap.release()
         except Exception:
             pass
+        if show:
+            try:
+                cv2.destroyAllWindows()
+            except Exception:
+                pass
 
-
-def aggregate_values(
-    collected: List[List[Tuple[float, float, float]]],
-    indices: List[Tuple[int, int]],
-) -> Dict[str, float]:
+def aggregate_values(collected, indices):
     if not indices:
         indices = all_xyz_indices()
 
-    buckets: Dict[str, List[float]] = {index_code(lm, c): [] for lm, c in indices}
+    buckets = {index_code(lm, c): [] for lm, c in indices}
 
     for frame_pts in collected:
         for lm_id, coord_id in indices:
@@ -128,42 +157,28 @@ def aggregate_values(
             val = x if coord_id == 0 else (y if coord_id == 1 else z)
             buckets[index_code(lm_id, coord_id)].append(float(val))
 
-    out: Dict[str, float] = {}
+    out = {}
     for key, arr in buckets.items():
-        if not arr:
-            out[key] = 0.0
-        else:
-            out[key] = float(np.median(np.asarray(arr, dtype=np.float32)))
+        out[key] = 0.0 if not arr else float(np.median(np.asarray(arr, dtype=np.float32)))
     return out
 
-def write_profile(path: str, values: Dict[str, float]) -> None:
+def write_profile(path, values):
     with open(path, "w", encoding="utf-8") as f:
         for key in sorted(values.keys()):
             f.write(f"{key} {values[key]:.8f}\n")
         f.write("FFFF")
 
 def main():
-    ap = argparse.ArgumentParser(
-        description="Enroll a user's MediaPipe FaceMesh profile on Windows (USB camera)."
-    )
+    ap = argparse.ArgumentParser(description="Enroll a user's MediaPipe FaceMesh profile on Windows (USB camera).")
     ap.add_argument("--out", required=True, help="Output profile txt path")
     ap.add_argument("--cam", type=int, default=0, help="Camera index (default 0)")
     ap.add_argument("--width", type=int, default=1280, help="Capture width")
     ap.add_argument("--height", type=int, default=720, help="Capture height")
     ap.add_argument("--frames", type=int, default=120, help="Frames to attempt collecting")
     ap.add_argument("--min-valid", type=int, default=40, help="Minimum valid frames required")
-    ap.add_argument(
-        "--indices",
-        type=str,
-        default="",
-        help="Comma-separated 4-digit indices to store, e.g. 1230,0561,0072. "
-             "Empty means store all x,y,z for all 468 landmarks.",
-    )
-    ap.add_argument(
-        "--refine",
-        action="store_true",
-        help="Use refine_landmarks=True for potentially better stability (slower).",
-    )
+    ap.add_argument("--indices", type=str, default="", help=("Comma-separated 4-digit indices to store, e.g. 1230,0561,0072. Empty means store all x,y,z for all 468 landmarks."))
+    ap.add_argument("--refine", action="store_true", help="Use refine_landmarks=True for potentially better stability (slower).")
+    ap.add_argument("--show", action="store_true", help="Show facemesh overlay window during capture.")
     args = ap.parse_args()
 
     try:
@@ -175,6 +190,7 @@ def main():
             frames=args.frames,
             min_valid=args.min_valid,
             refine=args.refine,
+            show=args.show,
         )
         values = aggregate_values(collected, indices)
         write_profile(args.out, values)
@@ -185,7 +201,6 @@ def main():
     except Exception as e:
         log(f"Enrollment failed: {e}")
         sys.exit(2)
-
 
 if __name__ == "__main__":
     main()
