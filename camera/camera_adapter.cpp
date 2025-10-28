@@ -84,7 +84,7 @@ namespace sca {
     }
 
     const std::filesystem::path out = PATH_AI / ai_filename(eFile::Output);
-    const int* val = read_single_char_code(out.string());
+    int val = read_single_char_code(out.string());
     if (val < 0) {
         return 4;
     }
