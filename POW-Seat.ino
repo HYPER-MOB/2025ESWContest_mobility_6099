@@ -732,7 +732,8 @@ void fsm_stateNotReadyLoop() {
                     if (g_ackTries >= ACK_MAX_TRIES) {
                         // 예: CAN 재오픈 시도, 또는 잠시 대기 등
                         // can_open 재시도 로직을 넣을 수 있음
-                        g_ackTries = 0; // 계속 시도할 거라면 카운터 리셋
+                        g_ackTries = 0;
+                        fsm_enterState(State::Ready);
                     }
                 }
             }
