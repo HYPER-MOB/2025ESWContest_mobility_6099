@@ -1,0 +1,4 @@
+[submodule "Library-CAN"]
+	path = Library-CAN
+	url = https://github.com/HYPER-MOB/Library-CAN.git
+	branch = develop/Linux

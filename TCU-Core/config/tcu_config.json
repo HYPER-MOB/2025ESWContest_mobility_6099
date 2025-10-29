@@ -1,0 +1,10 @@
+{
+  "can_interface": "can0",
+  "can_bitrate": 500000,
+  "app_api_url": "https://your-api-id.execute-api.us-east-1.amazonaws.com/v1",
+  "ai_api_url": "https://your-api-id.execute-api.ap-northeast-2.amazonaws.com/prod",
+  "car_id": "CAR123",
+  "api_timeout_ms": 5000,
+  "enable_auto_profile": true,
+  "enable_profile_update": true
+}
