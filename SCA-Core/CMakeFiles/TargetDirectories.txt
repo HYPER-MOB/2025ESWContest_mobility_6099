@@ -1,0 +1,5 @@
+/home/pi/work/SCA-Core/CMakeFiles/test_ble_log.dir
+/home/pi/work/SCA-Core/CMakeFiles/test_nfc_log.dir
+/home/pi/work/SCA-Core/CMakeFiles/rpi_can_router.dir
+/home/pi/work/SCA-Core/CMakeFiles/edit_cache.dir
+/home/pi/work/SCA-Core/CMakeFiles/rebuild_cache.dir

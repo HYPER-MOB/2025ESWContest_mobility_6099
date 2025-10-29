@@ -1,0 +1,1 @@
+/usr/bin/c++ -O2 -g -DNDEBUG -Wl,--dependency-file=CMakeFiles/rpi_can_router.dir/link.d CMakeFiles/rpi_can_router.dir/tests/rpi_can_router.cpp.o -o rpi_can_router  -lbluetooth -lnfc -lusb

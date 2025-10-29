@@ -1,0 +1,16 @@
+﻿# 공통 빌드/바이너리 무시
+build/
+cmake-build-*/
+build-*/
+*.o
+*.a
+*.so
+sca_core
+.vs
+
+# logs: 기본 무시하되...
+*.log
+
+# ...jetsonbuild 로그는 추적
+!jetsonbuild/
+!jetsonbuild/*.log

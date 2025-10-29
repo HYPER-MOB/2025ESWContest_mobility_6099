@@ -1,0 +1,1 @@
+/usr/bin/c++ -O2 -g -DNDEBUG -Wl,--dependency-file=CMakeFiles/test_nfc_log.dir/link.d CMakeFiles/test_nfc_log.dir/tests/test_nfc_log.cpp.o -o test_nfc_log  -lnfc -lusb
