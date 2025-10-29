@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">HYPERMOB MFA</string>
+
+    <!-- NFC HCE Service -->
+    <string name="nfc_service_description">HYPERMOB MFA Authentication Service</string>
+    <string name="nfc_aid_description">HYPERMOB NFC Authentication</string>
+</resources>
