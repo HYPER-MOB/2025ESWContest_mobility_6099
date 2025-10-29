@@ -1,0 +1,58 @@
+# Qt/Qt Creator user files
+*.pro.user
+*.user
+*.qbs.user
+*.qmake.stash
+*.qmake.cache
+
+# Build dirs (CMake/QtCreator)
+build*/
+cmake-build-*/
+out*/
+bin/
+obj/
+lib/
+
+# CMake build files (in-source 방지)
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.ninja
+.ninja_deps
+.ninja_log
+
+# Qt generated (in-source 빌드 시)
+moc_.*
+ui_*.h
+qrc_*.cpp
+*.qm
+
+# Objects / archives / libs
+*.o
+*.obj
+*.lo
+*.a
+*.la
+*.lib
+*.dll
+*.dylib
+*.so
+*.exp
+*.pdb
+*.ilk
+*.dSYM/
+
+# Executables (여기에 ipcserver 바이너리 이름 추가)
+dcu_daemon
+ipc_demo
+dcu_ui
+app
+*.exe
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
