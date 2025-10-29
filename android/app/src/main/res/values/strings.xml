@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">MyDrive3DX</string>
+
+    <!-- NFC HCE Service -->
+    <string name="nfc_hce_description">MyDrive3DX Smart Key Service</string>
+    <string name="nfc_aid_group_description">MyDrive3DX Vehicle Access</string>
+</resources>

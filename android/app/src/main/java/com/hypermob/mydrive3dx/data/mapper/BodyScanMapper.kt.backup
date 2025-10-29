@@ -1,0 +1,122 @@
+package com.hypermob.mydrive3dx.data.mapper
+
+import com.hypermob.mydrive3dx.data.remote.dto.*
+import com.hypermob.mydrive3dx.domain.model.*
+
+/**
+ * Body Scan Mapper
+ *
+ * DTO ↔ Domain 변환
+ */
+
+// BodyScan
+fun BodyScanDto.toDomain(): BodyScan {
+    return BodyScan(
+        scanId = scanId,
+        userId = userId,
+        timestamp = timestamp,
+        sittingHeight = sittingHeight,
+        shoulderWidth = shoulderWidth,
+        armLength = armLength,
+        headHeight = headHeight,
+        eyeHeight = eyeHeight,
+        legLength = legLength,
+        torsoLength = torsoLength,
+        weight = weight,
+        height = height
+    )
+}
+
+fun BodyScan.toDto(): BodyScanDto {
+    return BodyScanDto(
+        scanId = scanId,
+        userId = userId,
+        timestamp = timestamp,
+        sittingHeight = sittingHeight,
+        shoulderWidth = shoulderWidth,
+        armLength = armLength,
+        headHeight = headHeight,
+        eyeHeight = eyeHeight,
+        legLength = legLength,
+        torsoLength = torsoLength,
+        weight = weight,
+        height = height
+    )
+}
+
+// VehicleSettings
+fun VehicleSettingsDto.toDomain(): VehicleSettings {
+    return VehicleSettings(
+        seatFrontBack = seatFrontBack,
+        seatUpDown = seatUpDown,
+        seatBackAngle = seatBackAngle,
+        seatHeadrestHeight = seatHeadrestHeight,
+        leftMirrorAngle = leftMirrorAngle,
+        rightMirrorAngle = rightMirrorAngle,
+        steeringWheelHeight = steeringWheelHeight,
+        steeringWheelDepth = steeringWheelDepth,
+        vehicleModel = vehicleModel,
+        calibrationVersion = calibrationVersion
+    )
+}
+
+fun VehicleSettings.toDto(): VehicleSettingsDto {
+    return VehicleSettingsDto(
+        seatFrontBack = seatFrontBack,
+        seatUpDown = seatUpDown,
+        seatBackAngle = seatBackAngle,
+        seatHeadrestHeight = seatHeadrestHeight,
+        leftMirrorAngle = leftMirrorAngle,
+        rightMirrorAngle = rightMirrorAngle,
+        steeringWheelHeight = steeringWheelHeight,
+        steeringWheelDepth = steeringWheelDepth,
+        vehicleModel = vehicleModel,
+        calibrationVersion = calibrationVersion
+    )
+}
+
+// BodyProfile
+fun BodyProfileDto.toDomain(): BodyProfile {
+    return BodyProfile(
+        profileId = profileId,
+        userId = userId,
+        userName = userName,
+        bodyScan = bodyScan.toDomain(),
+        vehicleSettings = vehicleSettings.toDomain(),
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+        isActive = isActive
+    )
+}
+
+fun BodyProfile.toDto(): BodyProfileDto {
+    return BodyProfileDto(
+        profileId = profileId,
+        userId = userId,
+        userName = userName,
+        bodyScan = bodyScan.toDto(),
+        vehicleSettings = vehicleSettings.toDto(),
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+        isActive = isActive
+    )
+}
+
+// BodyScanRequest
+fun BodyScanRequest.toDto(): BodyScanRequestDto {
+    return BodyScanRequestDto(
+        userId = userId,
+        vehicleId = vehicleId
+    )
+}
+
+// VehicleSettingResult
+fun VehicleSettingResultDto.toDomain(): VehicleSettingResult {
+    return VehicleSettingResult(
+        success = success,
+        profileId = profileId,
+        appliedSettings = appliedSettings.toDomain(),
+        estimatedTime = estimatedTime,
+        message = message
+    )
+}

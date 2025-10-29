@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   MyDrive3DX Backup Rules
+   See https://developer.android.com/guide/topics/data/autobackup
+-->
+<full-backup-content>
+    <!-- Include general preferences -->
+    <include domain="sharedpref" path="."/>
+
+    <!-- Exclude sensitive data from backup -->
+    <exclude domain="sharedpref" path="encrypted_prefs.xml"/>
+    <exclude domain="sharedpref" path="auth_token.xml"/>
+    <exclude domain="database" path="mydrive.db"/>
+    <exclude domain="file" path="temp/"/>
+    <exclude domain="file" path="cache/"/>
+</full-backup-content>
