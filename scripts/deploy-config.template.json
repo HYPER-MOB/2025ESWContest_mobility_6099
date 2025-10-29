@@ -1,0 +1,15 @@
+{
+  "_comment": "HYPERMOB Unified Platform Deployment Configuration",
+  "_instructions": "Copy this file to 'deploy-config.json' and fill in your values",
+
+  "LAMBDA_SUBNET_IDS": "subnet-xxxxxxxxx,subnet-yyyyyyyyy",
+  "LAMBDA_SECURITY_GROUPS": "sg-zzzzzzzzz",
+  "DB_HOST": "your-db.abc123.us-east-1.rds.amazonaws.com",
+  "DB_PASSWORD": "YOUR_SECURE_PASSWORD_HERE",
+
+  "_optional": "Optional settings (will use defaults if not specified)",
+  "AWS_REGION": "",
+  "DB_USER": "",
+  "DB_NAME": "",
+  "API_NAME": ""
+}
