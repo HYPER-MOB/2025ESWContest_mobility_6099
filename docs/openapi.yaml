@@ -1,0 +1,618 @@
+openapi: 3.0.0
+info:
+  title: HYPERMOB Unified Platform API
+  version: 2.0.0
+  description: |
+    Complete API documentation for HYPERMOB mobility platform.
+    Includes authentication, vehicle control, bookings, and AI-powered personalization.
+  contact:
+    name: HYPERMOB Development Team
+    email: dev@hypermob.com
+
+servers:
+  - url: https://dfhab2ellk.execute-api.ap-northeast-2.amazonaws.com/v1
+    description: Production API
+
+tags:
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Body Upload
+    description: Body image upload for measurements
+  - name: AI Services
+    description: AI-powered analysis and recommendations
+  - name: Bookings
+    description: Vehicle booking management
+  - name: Vehicle Control
+    description: Vehicle control and status
+
+paths:
+  /auth/face:
+    post:
+      tags:
+        - Authentication
+      summary: Register user with face image
+      description: |
+        Uploads a face image to S3 and creates a new user.
+        Returns user_id, face_id, and S3 image URL.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - image
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: Face image file (JPEG, max 1MB)
+      responses:
+        '200':
+          description: User successfully created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: string
+                    example: "UAE8FCA401E37E1"
+                  face_id:
+                    type: string
+                    example: "f47ac10b58cc4372a5670e02b2c3d479"
+                  nfc_uid:
+                    type: string
+                    example: "04A1B2C3D4E5F6"
+                  face_image_url:
+                    type: string
+                    example: "https://hypermob-images.s3.ap-northeast-2.amazonaws.com/faces/UAE8FCA401E37E1.jpg"
+                  status:
+                    type: string
+                    example: "ok"
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Face already registered
+
+  /body/upload:
+    post:
+      tags:
+        - Body Upload
+      summary: Upload body image for measurements
+      description: |
+        Uploads a full body image to S3 for body measurement analysis.
+        Returns S3 URL for use with /measure endpoint.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - image
+                - user_id
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: Body image file (JPEG, max 5MB)
+                user_id:
+                  type: string
+                  description: User ID from registration
+      responses:
+        '200':
+          description: Body image uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  body_image_url:
+                    type: string
+                    example: "https://hypermob-images.s3.ap-northeast-2.amazonaws.com/body/UAE8FCA401E37E1_timestamp.jpg"
+                  user_id:
+                    type: string
+                  status:
+                    type: string
+                    example: "ok"
+
+  /auth/nfc:
+    get:
+      tags:
+        - Authentication
+      summary: Get NFC authentication data
+      description: Returns NFC UID for the specified user
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: User ID to get NFC data for
+      responses:
+        '200':
+          description: NFC data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: string
+                  nfc_uid:
+                    type: string
+                    example: "04A1B2C3D4E5F6"
+        '404':
+          description: User not found
+
+  /auth/nfc/verify:
+    post:
+      tags:
+        - Authentication
+      summary: Verify NFC authentication
+      description: Verifies NFC UID and returns user information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - nfc_uid
+              properties:
+                nfc_uid:
+                  type: string
+                  example: "04A1B2C3D4E5F6"
+      responses:
+        '200':
+          description: NFC verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verified:
+                    type: boolean
+                  user_id:
+                    type: string
+                  name:
+                    type: string
+                  message:
+                    type: string
+
+  /auth/session:
+    post:
+      tags:
+        - Authentication
+      summary: Create authentication session
+      description: Creates a new session after successful authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+              properties:
+                user_id:
+                  type: string
+                device_info:
+                  type: object
+                  description: Optional device information
+      responses:
+        '200':
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                  token:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+
+  /auth/result:
+    post:
+      tags:
+        - Authentication
+      summary: Submit authentication result
+      description: Records the result of an authentication attempt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - auth_type
+                - success
+              properties:
+                user_id:
+                  type: string
+                auth_type:
+                  type: string
+                  enum: [face, nfc, pin]
+                success:
+                  type: boolean
+                metadata:
+                  type: object
+      responses:
+        '200':
+          description: Result recorded successfully
+
+  /facedata:
+    post:
+      tags:
+        - AI Services
+      summary: Extract face landmarks
+      description: |
+        Analyzes face image from S3 URL and extracts 468 MediaPipe face landmarks.
+        Returns 3D coordinates (x, y, z) normalized to 0-1 range.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - image_url
+                - user_id
+              properties:
+                image_url:
+                  type: string
+                  description: S3 URL of face image
+                  example: "https://hypermob-images.s3.ap-northeast-2.amazonaws.com/faces/USER123.jpg"
+                user_id:
+                  type: string
+      responses:
+        '200':
+          description: Face landmarks extracted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  data:
+                    type: object
+                    properties:
+                      landmarks:
+                        type: object
+                        description: 468 landmarks with x,y,z coordinates (1404 values total)
+
+  /measure:
+    post:
+      tags:
+        - AI Services
+      summary: Measure body dimensions
+      description: |
+        Analyzes body image from S3 URL and calculates body measurements.
+        Uses MediaPipe Pose detection to measure upper arm, forearm, thigh, calf, and torso.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - image_url
+                - height_cm
+                - user_id
+              properties:
+                image_url:
+                  type: string
+                  description: S3 URL of body image
+                  example: "https://hypermob-images.s3.ap-northeast-2.amazonaws.com/body/USER123.jpg"
+                height_cm:
+                  type: number
+                  description: User's height in centimeters
+                  example: 177.7
+                user_id:
+                  type: string
+      responses:
+        '200':
+          description: Body measurements calculated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  data:
+                    type: object
+                    properties:
+                      upper_arm:
+                        type: number
+                        example: 32.6
+                      forearm:
+                        type: number
+                        example: 27.0
+                      thigh:
+                        type: number
+                        example: 39.4
+                      calf:
+                        type: number
+                        example: 28.2
+                      torso:
+                        type: number
+                        example: 61.0
+                      height:
+                        type: number
+                        example: 177.7
+                      output_image_url:
+                        type: string
+                        description: S3 URL of annotated measurement image
+
+  /recommend:
+    post:
+      tags:
+        - AI Services
+      summary: Recommend vehicle settings
+      description: |
+        Calculates optimal vehicle settings based on body measurements.
+        Returns seat position, steering wheel position, and mirror angles.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+                - height
+                - upper_arm
+                - forearm
+                - thigh
+                - calf
+                - torso
+              properties:
+                user_id:
+                  type: string
+                height:
+                  type: number
+                  description: Height in cm
+                upper_arm:
+                  type: number
+                  description: Upper arm length in cm
+                forearm:
+                  type: number
+                  description: Forearm length in cm
+                thigh:
+                  type: number
+                  description: Thigh length in cm
+                calf:
+                  type: number
+                  description: Calf length in cm
+                torso:
+                  type: number
+                  description: Torso length in cm
+      responses:
+        '200':
+          description: Vehicle settings recommended successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  data:
+                    type: object
+                    properties:
+                      seat_position:
+                        type: integer
+                        description: Seat forward/backward position in mm
+                        example: 42
+                      seat_angle:
+                        type: integer
+                        description: Seat backrest angle in degrees
+                        example: 14
+                      seat_front_height:
+                        type: integer
+                        description: Seat front height in mm
+                        example: 39
+                      seat_rear_height:
+                        type: integer
+                        description: Seat rear height in mm
+                        example: 41
+                      wheel_position:
+                        type: integer
+                        description: Steering wheel telescopic position in mm
+                        example: 87
+                      wheel_angle:
+                        type: integer
+                        description: Steering wheel tilt angle in degrees
+                        example: 19
+                      mirror_left_yaw:
+                        type: integer
+                        description: Left mirror horizontal angle
+                        example: 147
+                      mirror_left_pitch:
+                        type: integer
+                        description: Left mirror vertical angle
+                        example: 9
+                      mirror_right_yaw:
+                        type: integer
+                        description: Right mirror horizontal angle
+                        example: 180
+                      mirror_right_pitch:
+                        type: integer
+                        description: Right mirror vertical angle
+                        example: 11
+
+  /bookings:
+    post:
+      tags:
+        - Bookings
+      summary: Create or retrieve bookings
+      description: Creates a new booking or retrieves existing bookings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  properties:
+                    action:
+                      type: string
+                      enum: [create]
+                    user_id:
+                      type: string
+                    vehicle_id:
+                      type: string
+                    start_time:
+                      type: string
+                      format: date-time
+                    end_time:
+                      type: string
+                      format: date-time
+                - type: object
+                  properties:
+                    action:
+                      type: string
+                      enum: [list]
+                    user_id:
+                      type: string
+      responses:
+        '200':
+          description: Booking operation successful
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      booking_id:
+                        type: string
+                      status:
+                        type: string
+                  - type: array
+                    items:
+                      type: object
+                      properties:
+                        booking_id:
+                          type: string
+                        vehicle_id:
+                          type: string
+                        start_time:
+                          type: string
+                        end_time:
+                          type: string
+                        status:
+                          type: string
+
+  /vehicle/control:
+    post:
+      tags:
+        - Vehicle Control
+      summary: Control vehicle functions
+      description: Lock/unlock doors, start engine, control climate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - vehicle_id
+                - action
+              properties:
+                vehicle_id:
+                  type: string
+                action:
+                  type: string
+                  enum: [lock, unlock, start, stop, climate_on, climate_off]
+                parameters:
+                  type: object
+                  description: Additional action parameters
+      responses:
+        '200':
+          description: Vehicle command executed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+
+  /vehicle/status:
+    post:
+      tags:
+        - Vehicle Control
+      summary: Get vehicle status
+      description: Returns current vehicle status including location and battery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - vehicle_id
+              properties:
+                vehicle_id:
+                  type: string
+      responses:
+        '200':
+          description: Vehicle status retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vehicle_id:
+                    type: string
+                  is_locked:
+                    type: boolean
+                  battery_level:
+                    type: integer
+                  current_location:
+                    type: object
+                    properties:
+                      lat:
+                        type: number
+                      lng:
+                        type: number
+                      address:
+                        type: string
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security: []
