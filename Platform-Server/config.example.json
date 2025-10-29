@@ -1,0 +1,27 @@
+{
+  "aws": {
+    "region": "ap-northeast-2",
+    "profile": "default"
+  },
+  "database": {
+    "host": "your-rds-endpoint.amazonaws.com",
+    "database": "hypermob",
+    "username": "your_db_username",
+    "password": "your_db_password",
+    "port": 3306
+  },
+  "s3": {
+    "imagesBucket": "hypermob-images",
+    "resultsBucket": "hypermob-results"
+  },
+  "lambda": {
+    "executionRoleName": "hypermob-lambda-execution-role",
+    "layerName": "hypermob-shared-layer",
+    "timeout": 60,
+    "memorySize": 1024
+  },
+  "apiGateway": {
+    "name": "HYPERMOB-Unified-API",
+    "stage": "v1"
+  }
+}
