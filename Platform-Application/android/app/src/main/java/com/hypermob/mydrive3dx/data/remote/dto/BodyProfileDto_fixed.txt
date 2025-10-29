@@ -1,0 +1,14 @@
+/**
+ * Body Profile DTO
+ */
+@Serializable
+data class BodyProfileDto(
+    val profileId: String? = null,
+    val userId: String? = null,
+    val userName: String? = null,
+    val bodyScan: BodyScanDto? = null,
+    val vehicleSettings: VehicleSettingsDto? = null,
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+    val isActive: Boolean = true
+)

@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:gravity="center_horizontal">
+
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="AUTHENTICATION"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="32dp" />
+
+    <!-- User Info -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="@android:color/darker_gray"
+        android:layout_marginBottom="32dp">
+
+        <TextView
+            android:id="@+id/tvUserId"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="User ID: -"
+            android:textSize="14sp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tvNfcUid"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="NFC UID: -"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- NFC Status -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="24dp">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@android:drawable/ic_dialog_info"
+            android:layout_marginEnd="12dp" />
+
+        <TextView
+            android:id="@+id/tvNfcStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="NFC Status: Checking..."
+            android:textSize="16sp" />
+    </LinearLayout>
+
+    <!-- BLE Status -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="#E3F2FD"
+        android:layout_marginBottom="24dp">
+
+        <TextView
+            android:id="@+id/tvBleStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="BLE Status: Ready"
+            android:textSize="16sp"
+            android:textColor="#1976D2"
+            android:layout_marginBottom="12dp" />
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:indeterminate="true"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- Scan Button -->
+    <Button
+        android:id="@+id/btnStartScan"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start BLE Scan"
+        android:textSize="16sp"
+        android:padding="16dp"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Instructions -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📱 NFC is active in background\n🚗 BLE will auto-scan for vehicle\n✋ Tap your phone to vehicle NFC reader when prompted"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:layout_marginTop="32dp"
+        android:layout_marginBottom="24dp" />
+
+    <Button
+        android:id="@+id/btnBack"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Back"
+        style="@style/Widget.Material3.Button.TextButton" />
+
+</LinearLayout>

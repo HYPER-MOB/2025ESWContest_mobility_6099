@@ -1,0 +1,37 @@
+// BodyProfile
+fun BodyProfileDto.toDomain(): BodyProfile {
+    return BodyProfile(
+        profileId = profileId ?: "",
+        userId = userId ?: "",
+        userName = userName ?: "",
+        bodyScan = bodyScan?.toDomain() ?: BodyScan(
+            scanId = "",
+            userId = userId ?: "",
+            timestamp = "",
+            sittingHeight = 0.0,
+            shoulderWidth = 0.0,
+            armLength = 0.0,
+            headHeight = 0.0,
+            eyeHeight = 0.0,
+            legLength = 0.0,
+            torsoLength = 0.0,
+            weight = null,
+            height = null
+        ),
+        vehicleSettings = vehicleSettings?.toDomain() ?: VehicleSettings(
+            seatFrontBack = 0.0,
+            seatUpDown = 0.0,
+            seatBackAngle = 0.0,
+            seatHeadrestHeight = 0.0,
+            leftMirrorAngle = 0.0,
+            rightMirrorAngle = 0.0,
+            steeringWheelHeight = 0.0,
+            steeringWheelDepth = 0.0,
+            vehicleModel = null,
+            calibrationVersion = "1.0"
+        ),
+        createdAt = createdAt ?: "",
+        updatedAt = updatedAt ?: "",
+        isActive = isActive
+    )
+}
