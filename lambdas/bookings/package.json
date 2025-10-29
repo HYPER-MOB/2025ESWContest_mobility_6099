@@ -1,0 +1,19 @@
+{
+  "name": "hypermob-bookings",
+  "version": "1.0.0",
+  "description": "HYPERMOB Booking Management Lambda",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "hypermob",
+    "lambda",
+    "bookings"
+  ],
+  "author": "HYPERMOB Team",
+  "license": "ISC",
+  "dependencies": {
+    "mysql2": "^3.6.5"
+  }
+}
