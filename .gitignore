@@ -104,11 +104,6 @@ yarn-error.log*
 .env.production.local
 
 # ===========================
-# Legacy / Archive
-# ===========================
-.legacy/
-
-# ===========================
 # Documentation (deleted)
 # ===========================
 .docs/
